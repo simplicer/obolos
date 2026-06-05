@@ -3,12 +3,20 @@ package infrastructure
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 )
+
+// remoteConfigClient bounds remote config fetches so a slow or hung endpoint
+// cannot stall the refresh loop.
+var remoteConfigClient = &http.Client{Timeout: 5 * time.Second}
+
+// maxRemoteConfigBytes caps the remote config body to avoid unbounded reads.
+const maxRemoteConfigBytes = 1 << 20 // 1 MB
 
 // ServiceConfig represents the service configuration.
 type ServiceConfig struct {
@@ -80,7 +88,7 @@ func (cl *ConfigLoader) LoadFromURL(url string) error {
 		return nil
 	}
 
-	resp, err := http.Get(url)
+	resp, err := remoteConfigClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("fetch config from %s: %w", url, err)
 	}
@@ -91,7 +99,7 @@ func (cl *ConfigLoader) LoadFromURL(url string) error {
 	}
 
 	var config ServiceConfig
-	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRemoteConfigBytes)).Decode(&config); err != nil {
 		return fmt.Errorf("parse remote config: %w", err)
 	}
 

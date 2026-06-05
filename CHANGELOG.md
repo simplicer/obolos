@@ -92,6 +92,9 @@ release will be `1.0.0`.
   is complete and documented under `docs/`.
 
 ### Fixed
+- Remote service-config fetch now uses an `http.Client` with a 5s timeout and a
+  1 MB body limit instead of `http.Get`, so a slow or hung config endpoint can
+  no longer stall the background refresh loop.
 - Periodic grants never reduce a balance: `reset` and `rolling` now apply a
   **floor** (`balance = max(balance, amount)`) instead of overwriting, so a
   monthly grant can no longer wipe purchased (topped-up) credits (ADR 0009).
