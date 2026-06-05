@@ -18,5 +18,9 @@ release will be `1.0.0`.
 - Domain layer (`internal/metering/domain`): `Balance` value object
   (signed-integer credits), `Plan` (prepaid / unlimited / hybrid),
   `PricingRule` with time modifiers, `MeteringEvent` entity, `User` aggregate.
+- Application layer (`internal/metering/application`): use cases `Meter`,
+  `GetBalance`, `GetUsage`, `TopUp`, `SetPlan`, `GetAdminUsage`, `ListUsers`,
+  driven through `ports.go` interfaces (`UserRepository`, `EventRepository`,
+  `Meterer`, `PricingConfig`) with typed application errors.
 
 [Unreleased]: https://codeberg.org/simplicer/metering/compare/main
