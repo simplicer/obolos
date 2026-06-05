@@ -12,6 +12,9 @@ release will be `1.0.0`.
 ## [Unreleased]
 
 ### Changed
+- Added Architecture Decision Records under `docs/adrs/` (DDD vertical slicing,
+  stdlib-only HTTP, proxy-trusted identity, signed-integer balance, layered
+  JSON config, RESTful resource API).
 - Relocated `SPECS.md` to `docs/SPECS.md` and added the OpenAPI 3.1 contract
   at `docs/openapi.yaml`. Reconciled `SPECS.md`, `AGENTS.md` and `README.md`
   with the implemented RESTful surface (`POST /v1/charges`,
