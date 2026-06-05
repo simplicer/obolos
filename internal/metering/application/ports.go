@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"codeberg.org/simplicer/metering/internal/metering/domain"
+	"codeberg.org/simplicer/obolos/internal/metering/domain"
 )
 
 // UserRepository persists and retrieves users.

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/simplicer/metering/internal/metering/application"
-	"codeberg.org/simplicer/metering/internal/metering/domain"
+	"codeberg.org/simplicer/obolos/internal/metering/application"
+	"codeberg.org/simplicer/obolos/internal/metering/domain"
 )
 
 type inMemoryStore struct {

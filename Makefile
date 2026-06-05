@@ -1,8 +1,8 @@
 .PHONY: build run test test-integration test-compose test-short test-cover clean fmt lint help image-build stack-up stack-down migrate-up
 
 # Project
-MODULE     := codeberg.org/simplicer/metering
-BINARY     := bin/metering
+MODULE     := codeberg.org/simplicer/obolos
+BINARY     := bin/obolos
 VERSION    := $(shell cat VERSION)
 BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 COMMIT     := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -49,7 +49,7 @@ lint: ## Vet the code
 	$(GO) vet ./...
 
 image-build: ## Build the container image
-	docker build -t metering:$(VERSION) -f infra/image/Containerfile .
+	docker build -t obolos:$(VERSION) -f infra/image/Containerfile .
 
 stack-up: ## Start the service stack (service + database)
 	docker compose -f infra/compose.yaml up -d

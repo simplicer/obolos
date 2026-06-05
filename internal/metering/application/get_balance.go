@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"codeberg.org/simplicer/metering/internal/metering/domain"
+	"codeberg.org/simplicer/obolos/internal/metering/domain"
 )
 
 // GetBalanceUseCase retrieves a user's balance and monthly usage.

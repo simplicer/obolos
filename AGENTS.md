@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Architecture rules for the Metering service. Agents and developers MUST follow these rules.
+Architecture rules for **Obolos** (the metering service). Agents and developers MUST follow these rules.
 
 ## Architecture
 

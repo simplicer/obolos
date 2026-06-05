@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"codeberg.org/simplicer/metering/internal/metering/domain"
+	"codeberg.org/simplicer/obolos/internal/metering/domain"
 )
 
 // SetPlanUseCase changes a user's plan and optionally resets their credits.

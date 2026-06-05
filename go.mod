@@ -1,4 +1,4 @@
-module codeberg.org/simplicer/metering
+module codeberg.org/simplicer/obolos
 
 go 1.24.0
 

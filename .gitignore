@@ -1,5 +1,5 @@
 # Build artifacts (the compiled binary; tracked scripts also live in bin/)
-/bin/metering
+/bin/obolos
 coverage.out
 coverage.html
 

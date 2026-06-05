@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/simplicer/metering/internal/metering/domain"
+	"codeberg.org/simplicer/obolos/internal/metering/domain"
 )
 
 // --- Mock repositories ---

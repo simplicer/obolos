@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"codeberg.org/simplicer/metering/internal/metering/domain"
-	"codeberg.org/simplicer/metering/migrations"
+	"codeberg.org/simplicer/obolos/internal/metering/domain"
+	"codeberg.org/simplicer/obolos/migrations"
 )
 
 // These tests exercise PostgresStore against a real PostgreSQL instance.

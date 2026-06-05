@@ -1,8 +1,8 @@
-# SPECS.md — Metering Service Specification
+# SPECS.md — Obolos (Metering Service) Specification
 
 ## 1. Purpose
 
-Metering is a lightweight Go service that counts API requests per user and deducts credits based on configurable pricing rules. It is designed to be called by a reverse proxy (Traefik, Caddy, KrakenD) via `forwardAuth` middleware.
+Obolos is a lightweight Go service that meters API requests per user and deducts the credit cost reported by the caller, enforcing each client's balance and entitlement rules. It is designed to be called by a reverse proxy (Traefik, Caddy, KrakenD) via `forwardAuth` middleware.
 
 **This service does NOT manage identity.** It trusts the `X-User-Id` header injected by the reverse proxy after IdP authentication.
 

@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"codeberg.org/simplicer/metering/internal/metering/application"
-	"codeberg.org/simplicer/metering/internal/metering/infrastructure"
-	"codeberg.org/simplicer/metering/migrations"
+	"codeberg.org/simplicer/obolos/internal/metering/application"
+	"codeberg.org/simplicer/obolos/internal/metering/infrastructure"
+	"codeberg.org/simplicer/obolos/migrations"
 )
 
 // Build-time variables set via ldflags.
@@ -29,7 +29,7 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	logger.Info("starting metering service",
+	logger.Info("starting obolos service",
 		slog.String("version", Version),
 		slog.String("commit", Commit),
 		slog.String("build_time", BuildTime),
@@ -126,13 +126,13 @@ func main() {
 		}
 	}()
 
-	logger.Info("metering service listening", slog.String("addr", addr))
+	logger.Info("obolos service listening", slog.String("addr", addr))
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	logger.Info("metering service stopped")
+	logger.Info("obolos service stopped")
 }
 
 // startConfigRefresh periodically reloads the service config from the remote URL.

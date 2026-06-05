@@ -128,4 +128,4 @@ release will be `1.0.0`.
   (`base_cost`, `final_cost`, `created_at`, …), consistent with every other
   response body, instead of Go's default PascalCase field names.
 
-[Unreleased]: https://codeberg.org/simplicer/metering/compare/main
+[Unreleased]: https://codeberg.org/simplicer/obolos/compare/main

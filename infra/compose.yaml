@@ -1,12 +1,12 @@
 services:
-  metering:
+  obolos:
     build:
       context: ../..
       dockerfile: infra/image/Containerfile
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgres://metering:metering@postgres:5432/metering?sslmode=disable
+      DATABASE_URL: postgres://obolos:obolos@postgres:5432/obolos?sslmode=disable
       LOG_LEVEL: info
     depends_on:
       postgres:
@@ -16,15 +16,15 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: metering
-      POSTGRES_PASSWORD: metering
-      POSTGRES_DB: metering
+      POSTGRES_USER: obolos
+      POSTGRES_PASSWORD: obolos
+      POSTGRES_DB: obolos
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U metering"]
+      test: ["CMD-SHELL", "pg_isready -U obolos"]
       interval: 5s
       timeout: 5s
       retries: 5

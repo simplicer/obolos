@@ -10,8 +10,8 @@ import (
 	"sort"
 	"time"
 
-	"codeberg.org/simplicer/metering/internal/metering/application"
-	"codeberg.org/simplicer/metering/internal/metering/domain"
+	"codeberg.org/simplicer/obolos/internal/metering/application"
+	"codeberg.org/simplicer/obolos/internal/metering/domain"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

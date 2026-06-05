@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"codeberg.org/simplicer/metering/internal/metering/domain"
+	"codeberg.org/simplicer/obolos/internal/metering/domain"
 )
 
 // This file holds the acceptance / end-to-end suite: it drives the full HTTP

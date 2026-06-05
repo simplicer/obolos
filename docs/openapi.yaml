@@ -15,7 +15,7 @@ info:
     url: https://www.gnu.org/licenses/agpl-3.0.txt
   contact:
     name: Simplicer
-    url: https://codeberg.org/simplicer/metering
+    url: https://codeberg.org/simplicer/obolos
 
 servers:
   - url: http://localhost:8080
