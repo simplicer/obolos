@@ -1,4 +1,4 @@
-.PHONY: build run test test-integration test-short test-cover clean fmt lint help docker-build docker-up docker-down migrate-up
+.PHONY: build run test test-integration test-compose test-short test-cover clean fmt lint help image-build stack-up stack-down migrate-up
 
 # Project
 MODULE     := codeberg.org/simplicer/metering
@@ -44,14 +44,14 @@ fmt: ## Format code
 lint: ## Vet the code
 	$(GO) vet ./...
 
-docker-build: ## Build Docker image
-	docker build -t metering:$(VERSION) -f infra/docker/Dockerfile .
+image-build: ## Build the container image
+	docker build -t metering:$(VERSION) -f infra/image/Containerfile .
 
-docker-up: ## Start Docker container
-	cd infra && docker compose up -d
+stack-up: ## Start the service stack (service + database)
+	docker compose -f infra/compose.yaml up -d
 
-docker-down: ## Stop Docker container
-	cd infra && docker compose down
+stack-down: ## Stop the service stack
+	docker compose -f infra/compose.yaml down
 
 migrate-up: ## Apply database migrations (uses DATABASE_URL)
 	@test -n "$(DATABASE_URL)" || { echo "DATABASE_URL is required"; exit 1; }

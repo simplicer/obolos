@@ -2,7 +2,7 @@ services:
   metering:
     build:
       context: ../..
-      dockerfile: infra/docker/Dockerfile
+      dockerfile: infra/image/Containerfile
     ports:
       - "8080:8080"
     environment:

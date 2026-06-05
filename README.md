@@ -49,11 +49,18 @@ make build
 make run
 ```
 
-### Docker
+### Containers
 
 ```bash
-make docker-build
-make docker-up
+make image-build   # build the container image (infra/image/Containerfile)
+make stack-up      # start the service + database stack (infra/compose.yaml)
+make stack-down    # stop the stack
+```
+
+Run the full test suite inside containers:
+
+```bash
+make test-compose  # unit + integration tests via infra/compose.test.yaml
 ```
 
 ### Configuration

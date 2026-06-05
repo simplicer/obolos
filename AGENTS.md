@@ -50,7 +50,7 @@ Infrastructure → Application → Domain
 ## Testing Philosophy
 
 - **Unit**: Every use case tested in isolation with mocked ports.
-- **Integration**: PostgreSQL store tested with real DB (testcontainers or Docker).
+- **Integration**: PostgreSQL store tested with a real DB in a container.
 - **Acceptance**: Full metering flow tested end-to-end via HTTP.
 - **E2E**: Full server behavior tested via HTTP requests.
 
@@ -75,6 +75,21 @@ Tests colocated with source (Go convention). No separate `tests/` directory.
   3. Environment variables (overrides)
 - Config MUST be reloadable without restart.
 - Pricing config changes take effect on next request (no caching of pricing rules beyond TTL).
+
+## Deployment & infra layout
+
+- Deployment and container artifacts live under `infra/` and MUST use
+  vendor-neutral, intent-revealing names (Screaming Architecture): the
+  structure screams "deployable service", not the tool that runs it.
+  - `infra/image/Containerfile` — OCI build recipe (not `Dockerfile`).
+  - `infra/compose.yaml` — runtime stack per the Compose Specification
+    (not `docker-compose.yml`).
+  - `infra/compose.test.yaml` — full test suite run inside containers.
+- Tool/spec-mandated tokens that are not ours (the `docker compose` CLI, the
+  Compose `dockerfile:` key, the Postgres image's `/docker-entrypoint-initdb.d`)
+  are unavoidable and exempt.
+- All container operations are driven through the Makefile (`image-build`,
+  `stack-up`, `stack-down`, `test-compose`). See ADR 0007.
 
 ## Versioning
 
