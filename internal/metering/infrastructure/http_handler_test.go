@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,8 @@ func (s *inMemoryStore) Upsert(_ context.Context, u *domain.User) error {
 	s.users[u.ID] = u
 	return nil
 }
+
+func (s *inMemoryStore) Ping(_ context.Context) error { return nil }
 
 func (s *inMemoryStore) CreateIfAbsent(_ context.Context, u *domain.User) error {
 	if _, ok := s.users[u.ID]; ok {
@@ -173,7 +176,7 @@ func setupHandler(store *inMemoryStore) *Handler {
 	adminUsageUC := application.NewGetAdminUsageUseCase(store)
 	listUsersUC := application.NewListUsersUseCase(store)
 
-	return NewHandler(meterUC, getBalanceUC, getUsageUC, topUpUC, setPlanUC, adminUsageUC, listUsersUC, store, logger, configLoader)
+	return NewHandler(meterUC, getBalanceUC, getUsageUC, topUpUC, setPlanUC, adminUsageUC, listUsersUC, store, store, logger, configLoader)
 }
 
 func setupRouter(store *inMemoryStore) http.Handler {
@@ -187,7 +190,7 @@ func setupRouter(store *inMemoryStore) http.Handler {
 	setPlanUC := application.NewSetPlanUseCase(store)
 	adminUsageUC := application.NewGetAdminUsageUseCase(store)
 	listUsersUC := application.NewListUsersUseCase(store)
-	handler := NewHandler(meterUC, getBalanceUC, getUsageUC, topUpUC, setPlanUC, adminUsageUC, listUsersUC, store, logger, configLoader)
+	handler := NewHandler(meterUC, getBalanceUC, getUsageUC, topUpUC, setPlanUC, adminUsageUC, listUsersUC, store, store, logger, configLoader)
 
 	return NewRouter(handler, logger)
 }
@@ -354,6 +357,34 @@ func TestHandlePutPlan(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
+}
+
+func TestHandleReady_OK(t *testing.T) {
+	router := setupRouter(newInMemoryStore())
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("ready: got %d, want 200", w.Code)
+	}
+}
+
+type failingPinger struct{}
+
+func (failingPinger) Ping(context.Context) error { return context.DeadlineExceeded }
+
+func TestHandleReady_DBDown(t *testing.T) {
+	h := &Handler{ready: failingPinger{}, logger: testLogger()}
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	w := httptest.NewRecorder()
+	h.HandleReady(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("ready with DB down: got %d, want 503", w.Code)
+	}
+}
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 // --- Router integration tests ---

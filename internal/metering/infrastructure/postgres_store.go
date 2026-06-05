@@ -49,6 +49,11 @@ func (s *PostgresStore) Close() {
 	s.pool.Close()
 }
 
+// Ping verifies connectivity to the database (used by the readiness probe).
+func (s *PostgresStore) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 // --- UserRepository ---
 
 // List returns all users up to the given limit.

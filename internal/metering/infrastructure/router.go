@@ -21,6 +21,7 @@ func NewRouter(handler *Handler, logger *slog.Logger) http.Handler {
 
 	// Well-known
 	mux.HandleFunc("GET /health", handler.HandleHealth)
+	mux.HandleFunc("GET /ready", handler.HandleReady)
 	mux.HandleFunc("GET /version", handler.HandleVersion)
 
 	// Charges: create a charge (called by reverse proxy via forwardAuth)

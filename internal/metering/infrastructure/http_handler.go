@@ -33,6 +33,11 @@ type Response struct {
 // userIDPattern validates user IDs: alphanumeric, dashes, underscores, dots, max 255 chars.
 var userIDPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,255}$`)
 
+// Pinger verifies a backing dependency is reachable (for the readiness probe).
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
 // Handler holds all HTTP handlers and their dependencies.
 type Handler struct {
 	meter      *application.MeterUseCase
@@ -43,6 +48,7 @@ type Handler struct {
 	adminUsage *application.GetAdminUsageUseCase
 	listUsers  *application.ListUsersUseCase
 	users      application.UserRepository
+	ready      Pinger
 	logger     *slog.Logger
 	config     *ConfigLoader
 }
@@ -57,6 +63,7 @@ func NewHandler(
 	adminUsage *application.GetAdminUsageUseCase,
 	listUsers *application.ListUsersUseCase,
 	users application.UserRepository,
+	ready Pinger,
 	logger *slog.Logger,
 	config *ConfigLoader,
 ) *Handler {
@@ -69,6 +76,7 @@ func NewHandler(
 		adminUsage: adminUsage,
 		listUsers:  listUsers,
 		users:      users,
+		ready:      ready,
 		logger:     logger,
 		config:     config,
 	}
@@ -312,6 +320,20 @@ func (h *Handler) HandlePutPlan(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, Response{Data: map[string]string{"status": "ok"}})
+}
+
+// HandleReady is the readiness probe: it reports 503 when the database is
+// unreachable so the orchestrator can route traffic away from the instance.
+func (h *Handler) HandleReady(w http.ResponseWriter, r *http.Request) {
+	if h.ready != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := h.ready.Ping(ctx); err != nil {
+			writeProblem(w, http.StatusServiceUnavailable, "not_ready", "Database is unavailable")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, Response{Data: map[string]string{"status": "ready"}})
 }
 
 func (h *Handler) HandleVersion(w http.ResponseWriter, r *http.Request) {

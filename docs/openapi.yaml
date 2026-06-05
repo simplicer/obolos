@@ -9,7 +9,7 @@ info:
 
     All successful responses use a `{ "data": ... }` envelope. All errors use
     RFC 7807 / RFC 9457 `application/problem+json`.
-  version: 0.11.0-unstable
+  version: 0.12.0-unstable
   license:
     name: GNU AGPL v3
     url: https://www.gnu.org/licenses/agpl-3.0.txt
@@ -49,6 +49,30 @@ paths:
                     properties:
                       status: { type: string, const: ok }
 
+  /ready:
+    get:
+      tags: [well-known]
+      summary: Readiness probe (checks the database)
+      operationId: getReady
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, const: ready }
+        "503":
+          description: A backing dependency (database) is unavailable
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
   /version:
     get:
       tags: [well-known]
@@ -66,7 +90,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      version: { type: string, example: 0.11.0-unstable }
+                      version: { type: string, example: 0.12.0-unstable }
 
   /v1/charges:
     post:

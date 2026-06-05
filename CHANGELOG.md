@@ -37,6 +37,8 @@ release will be `1.0.0`.
   RPC-style draft (`/v1/meter`, `/v1/admin/.../topup`).
 
 ### Added
+- **Readiness probe** `GET /ready` that checks database connectivity
+  (`503 not_ready` when down); `GET /health` stays a pure liveness check.
 - **Idempotent charges** via an optional `X-Request-Id` header (migration `003`,
   unique `(user_id, request_id)`). A retry with the same key replays the prior
   result without charging again — safe under `forwardAuth` retries. Enforced

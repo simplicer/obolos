@@ -83,7 +83,7 @@ func main() {
 
 	handler := infrastructure.NewHandler(
 		meterUC, getBalanceUC, getUsageUC, topUpUC, setPlanUC, adminUsageUC, listUsersUC,
-		store, logger, configLoader,
+		store, store, logger, configLoader,
 	)
 
 	router := infrastructure.NewRouter(handler, logger)
