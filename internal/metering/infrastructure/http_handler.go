@@ -296,6 +296,10 @@ func (h *Handler) HandlePutPlan(w http.ResponseWriter, r *http.Request) {
 			writeProblem(w, http.StatusBadRequest, "invalid_plan_type", "Valid plan types: prepaid, unlimited, hybrid")
 			return
 		}
+		if errors.Is(err, application.ErrInvalidEntitlements) {
+			writeProblem(w, http.StatusBadRequest, "invalid_entitlements", "Entitlement rules are malformed")
+			return
+		}
 		writeProblem(w, http.StatusInternalServerError, "internal_error", "Plan update failed")
 		return
 	}

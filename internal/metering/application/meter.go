@@ -81,6 +81,9 @@ func (uc *MeterUseCase) Execute(ctx context.Context, input MeterInput) (*MeterRe
 		}
 		cost = adjusted
 	}
+	if cost < 0 { // defence in depth: a charge must never credit the user
+		cost = 0
+	}
 	input.Cost = cost
 
 	// Zero cost, or an unlimited plan: pass through with no deduction, but still

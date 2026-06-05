@@ -7,7 +7,13 @@ import (
 	"time"
 )
 
-var errInvalidHourRange = errors.New("invalid hour range")
+var (
+	errInvalidHourRange    = errors.New("invalid hour range")
+	errInvalidEntitlements = errors.New("invalid entitlements")
+)
+
+// ErrInvalidEntitlements is returned by Validate for malformed entitlement rules.
+var ErrInvalidEntitlements = errInvalidEntitlements
 
 // WindowAction is what a time window does to a charge that falls within it.
 type WindowAction string
@@ -101,6 +107,55 @@ type Entitlements struct {
 	RateLimitPerMin int `json:"rate_limit_per_min,omitempty"`
 }
 
+// Validate checks that the entitlement rules are well-formed. It rejects the
+// configurations that would otherwise misbehave silently or, worse, credit a
+// user (e.g. a negative multiply factor) or push a balance negative.
+func (e Entitlements) Validate() error {
+	for i := range e.Windows {
+		w := &e.Windows[i]
+		switch w.Action {
+		case WindowFree, WindowBlock:
+		case WindowMultiply:
+			if w.Factor < 0 {
+				return errInvalidEntitlements
+			}
+		default:
+			return errInvalidEntitlements
+		}
+		if w.Hours != "" {
+			if _, _, err := parseHourRange(w.Hours); err != nil {
+				return errInvalidEntitlements
+			}
+		}
+		for _, d := range w.Days {
+			if !validDay(d) {
+				return errInvalidEntitlements
+			}
+		}
+	}
+	switch e.Grant.Mode {
+	case "", GrantReset, GrantRollover, GrantRolling:
+	default:
+		return errInvalidEntitlements
+	}
+	if e.Grant.Amount < 0 || e.Grant.Cap < 0 {
+		return errInvalidEntitlements
+	}
+	if e.RateLimitPerMin < 0 {
+		return errInvalidEntitlements
+	}
+	return nil
+}
+
+func validDay(d string) bool {
+	switch strings.ToLower(d) {
+	case "mon", "tue", "wed", "thu", "fri", "sat", "sun":
+		return true
+	default:
+		return false
+	}
+}
+
 // WindowEffect returns the first matching window's action and factor at time t.
 // matched is false when no window applies (charge proceeds normally).
 func (e Entitlements) WindowEffect(t time.Time) (action WindowAction, factor float64, matched bool) {
@@ -127,7 +182,11 @@ func (e Entitlements) ApplyWindowToCost(cost int64, t time.Time) (adjusted int64
 	case WindowFree:
 		return 0, false, true
 	case WindowMultiply:
-		return int64(math.Round(float64(cost) * factor)), false, true
+		adjusted := int64(math.Round(float64(cost) * factor))
+		if adjusted < 0 {
+			adjusted = 0
+		}
+		return adjusted, false, true
 	default:
 		return cost, false, true
 	}

@@ -99,6 +99,43 @@ func TestGrant_Rolling30Days(t *testing.T) {
 	}
 }
 
+func TestEntitlements_Validate(t *testing.T) {
+	valid := Entitlements{
+		Windows:         []TimeWindow{{Hours: "09:00-17:00", Days: []string{"mon", "fri"}, Action: WindowMultiply, Factor: 1.5}},
+		Grant:           Grant{Mode: GrantRollover, Amount: 1000, Cap: 5000},
+		RateLimitPerMin: 600,
+	}
+	if err := valid.Validate(); err != nil {
+		t.Errorf("valid entitlements rejected: %v", err)
+	}
+
+	bad := []Entitlements{
+		{Windows: []TimeWindow{{Action: "bogus"}}},
+		{Windows: []TimeWindow{{Action: WindowMultiply, Factor: -1}}},
+		{Windows: []TimeWindow{{Hours: "9-5", Action: WindowFree}}},
+		{Windows: []TimeWindow{{Days: []string{"funday"}, Action: WindowFree}}},
+		{Grant: Grant{Mode: "weekly", Amount: 1}},
+		{Grant: Grant{Mode: GrantReset, Amount: -100}},
+		{Grant: Grant{Mode: GrantRollover, Cap: -1}},
+		{RateLimitPerMin: -5},
+	}
+	for i, e := range bad {
+		if err := e.Validate(); err == nil {
+			t.Errorf("case %d: expected validation error, got nil", i)
+		}
+	}
+}
+
+func TestEntitlements_NegativeFactorClampedToZero(t *testing.T) {
+	// Defence in depth: even if a negative factor slipped past validation, the
+	// adjusted cost must never go negative (which would credit the user).
+	e := Entitlements{Windows: []TimeWindow{{Action: WindowMultiply, Factor: -2}}}
+	cost, _, _ := e.ApplyWindowToCost(10, fri10)
+	if cost != 0 {
+		t.Errorf("negative factor: got cost %d, want 0", cost)
+	}
+}
+
 func TestGrant_NoneNeverDue(t *testing.T) {
 	if (Grant{}).IsDue(fri10) {
 		t.Error("empty grant must never be due")

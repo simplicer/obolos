@@ -88,6 +88,12 @@ release will be `1.0.0`.
   is complete and documented under `docs/`.
 
 ### Fixed
+- Entitlement rules are now validated on `PUT /v1/users/{id}/plan` (window
+  action/hours/days, non-negative multiply factor, grant mode/amount/cap,
+  non-negative rate limit) → `400 invalid_entitlements`, and a charge cost is
+  clamped to ≥ 0 after window adjustment. This closes a credit-leak: a negative
+  `multiply` factor (or a negative grant amount) could otherwise credit the user
+  or drive a balance negative.
 - Credit mutations are now atomic. Top-up, set-plan and auto-provisioning did
   read-modify-write through a full-row `Upsert` outside any lock, so they could
   lose updates against a concurrent charge (which locks the row) — a top-up

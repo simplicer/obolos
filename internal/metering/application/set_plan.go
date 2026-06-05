@@ -33,6 +33,10 @@ func (uc *SetPlanUseCase) Execute(ctx context.Context, input SetPlanInput) (*Set
 		return nil, ErrInvalidPlanType
 	}
 
+	if err := input.Entitlements.Validate(); err != nil {
+		return nil, ErrInvalidEntitlements
+	}
+
 	plan := domain.Plan{Type: pt, OverageRate: input.OverageRate}
 	if err := uc.users.SetPlan(ctx, input.UserID, plan, input.Credits, input.Entitlements); err != nil {
 		if err == ErrUserNotFound {
