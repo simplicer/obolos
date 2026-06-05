@@ -37,6 +37,11 @@ release will be `1.0.0`.
   RPC-style draft (`/v1/meter`, `/v1/admin/.../topup`).
 
 ### Added
+- Per-user **periodic credit grant** in `entitlements.grant`: `reset` (monthly
+  reset to amount, unused expire), `rollover` (monthly add amount up to an
+  optional cap) or `rolling` (reset to amount every 30 days). Applied lazily on
+  the next charge or balance read (no cron) and, via a row-locked compare on the
+  period anchor, **at most once per period** even under concurrency.
 - Per-user **entitlement time windows** (`plan_config` JSONB, migration `002`).
   Each window (UTC hours/days) applies one of three effects to a charge:
   `free` (passes, no deduction), `multiply` (scales the reported cost by a

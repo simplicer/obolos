@@ -83,6 +83,22 @@ func (m *mockUserRepo) SetPlan(_ context.Context, userID string, plan domain.Pla
 	return nil
 }
 
+func (m *mockUserRepo) ApplyDueGrant(_ context.Context, userID string, now time.Time) (int64, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[userID]
+	if !ok {
+		return 0, false, ErrUserNotFound
+	}
+	if !u.Entitlements.Grant.IsDue(now) {
+		return u.Balance.Value(), false, nil
+	}
+	nb, na := u.Entitlements.Grant.Applied(u.Balance.Value(), now)
+	u.Balance = domain.NewBalance(nb)
+	u.Entitlements.Grant.Anchor = na
+	return nb, true, nil
+}
+
 type mockEventRepo struct {
 	events []domain.MeteringEvent
 }
@@ -355,6 +371,25 @@ func TestMeterUseCase_WindowMultiply(t *testing.T) {
 	}
 	if res.Cost != 10 || res.Balance != 90 {
 		t.Errorf("multiply window: got cost=%d balance=%d, want 10/90", res.Cost, res.Balance)
+	}
+}
+
+func TestMeterUseCase_GrantAppliedBeforeCharge(t *testing.T) {
+	users := newMockUserRepo()
+	events := newMockEventRepo()
+	users.Upsert(context.Background(), &domain.User{
+		ID: "user-1", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(0),
+		Entitlements: domain.Entitlements{Grant: domain.Grant{Mode: domain.GrantReset, Amount: 100, Anchor: "2000-01"}},
+	})
+
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
+	res, err := uc.Execute(context.Background(), MeterInput{UserID: "user-1", Cost: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Grant resets to 100, then the charge deducts 5 -> 95.
+	if res.Balance != 95 {
+		t.Errorf("got balance %d, want 95 (grant 100 then -5)", res.Balance)
 	}
 }
 

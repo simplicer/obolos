@@ -130,8 +130,9 @@ The domain MUST support three plan types:
 Every user has exactly one active plan. Plans define:
 - Plan type (prepaid, unlimited, hybrid)
 - Included credits (for prepaid/hybrid)
-- Entitlement rules (in `plan_config`): time windows — free / multiply / block
-  (implemented); grants/expiry and rate limits (roadmap)
+- Entitlement rules (in `plan_config`): time windows — free / multiply / block;
+  periodic grant — reset / rollover / rolling (lazy, once per period);
+  rate limits (roadmap)
 
 The *price* of a request is NOT a plan concern — it is reported by the caller
 (`X-Cost`). The plan governs how the client's credits may be spent, not what

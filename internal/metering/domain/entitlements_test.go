@@ -59,6 +59,52 @@ func TestEntitlements_DayFilter(t *testing.T) {
 	}
 }
 
+func TestGrant_ResetMonthly(t *testing.T) {
+	g := Grant{Mode: GrantReset, Amount: 1000, Anchor: "2026-05"}
+	if !g.IsDue(fri10) {
+		t.Fatal("reset grant from a prior month should be due")
+	}
+	nb, anchor := g.Applied(50, fri10)
+	if nb != 1000 || anchor != "2026-06" {
+		t.Errorf("reset: got %d/%s, want 1000/2026-06", nb, anchor)
+	}
+	// Same month → not due.
+	if (Grant{Mode: GrantReset, Amount: 1000, Anchor: "2026-06"}).IsDue(fri10) {
+		t.Error("reset grant in the same month must not be due")
+	}
+}
+
+func TestGrant_RolloverWithCap(t *testing.T) {
+	capped := Grant{Mode: GrantRollover, Amount: 1000, Cap: 1500, Anchor: "2026-05"}
+	if nb, _ := capped.Applied(800, fri10); nb != 1500 {
+		t.Errorf("rollover capped: got %d, want 1500", nb)
+	}
+	uncapped := Grant{Mode: GrantRollover, Amount: 1000, Anchor: "2026-05"}
+	if nb, _ := uncapped.Applied(800, fri10); nb != 1800 {
+		t.Errorf("rollover uncapped: got %d, want 1800", nb)
+	}
+}
+
+func TestGrant_Rolling30Days(t *testing.T) {
+	if !(Grant{Mode: GrantRolling, Amount: 500}).IsDue(fri10) {
+		t.Error("rolling grant with empty anchor should be due")
+	}
+	recent := Grant{Mode: GrantRolling, Amount: 500, Anchor: fri10.Add(-10 * 24 * time.Hour).Format(time.RFC3339)}
+	if recent.IsDue(fri10) {
+		t.Error("rolling grant 10 days old must not be due")
+	}
+	old := Grant{Mode: GrantRolling, Amount: 500, Anchor: fri10.Add(-31 * 24 * time.Hour).Format(time.RFC3339)}
+	if !old.IsDue(fri10) {
+		t.Error("rolling grant 31 days old should be due")
+	}
+}
+
+func TestGrant_NoneNeverDue(t *testing.T) {
+	if (Grant{}).IsDue(fri10) {
+		t.Error("empty grant must never be due")
+	}
+}
+
 func TestEntitlements_FirstMatchWins(t *testing.T) {
 	e := Entitlements{Windows: []TimeWindow{
 		{Hours: "09:00-17:00", Action: WindowFree},

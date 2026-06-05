@@ -73,6 +73,20 @@ func (s *inMemoryStore) SetPlan(_ context.Context, userID string, plan domain.Pl
 	return nil
 }
 
+func (s *inMemoryStore) ApplyDueGrant(_ context.Context, userID string, now time.Time) (int64, bool, error) {
+	u, ok := s.users[userID]
+	if !ok {
+		return 0, false, application.ErrUserNotFound
+	}
+	if !u.Entitlements.Grant.IsDue(now) {
+		return u.Balance.Value(), false, nil
+	}
+	nb, na := u.Entitlements.Grant.Applied(u.Balance.Value(), now)
+	u.Balance = domain.NewBalance(nb)
+	u.Entitlements.Grant.Anchor = na
+	return nb, true, nil
+}
+
 func (s *inMemoryStore) Save(_ context.Context, e domain.MeteringEvent) error {
 	s.events = append(s.events, e)
 	return nil

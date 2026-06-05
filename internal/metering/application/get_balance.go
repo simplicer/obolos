@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"codeberg.org/simplicer/metering/internal/metering/domain"
 )
 
 // GetBalanceUseCase retrieves a user's balance and monthly usage.
@@ -27,8 +29,16 @@ func (uc *GetBalanceUseCase) Execute(ctx context.Context, userID string) (*Balan
 		return nil, ErrUserNotFound
 	}
 
-	// Calculate total usage this month using SQL aggregation (constant memory)
 	n := now()
+
+	// Lazily apply a periodic credit grant if one is due before reporting.
+	if user.Entitlements.Grant.IsDue(n) {
+		if newBalance, applied, err := uc.users.ApplyDueGrant(ctx, userID, n); err == nil && applied {
+			user.Balance = domain.NewBalance(newBalance)
+		}
+	}
+
+	// Calculate total usage this month using SQL aggregation (constant memory)
 	startOfMonth := time.Date(n.Year(), n.Month(), 1, 0, 0, 0, 0, time.UTC)
 	totalUsage, err := uc.events.SumCostByUserAndDateRange(ctx, userID, startOfMonth, n)
 	if err != nil {

@@ -46,6 +46,18 @@ func (uc *MeterUseCase) Execute(ctx context.Context, input MeterInput) (*MeterRe
 		return nil, ErrUserNotFound
 	}
 
+	// Lazily apply a periodic credit grant if one is due (no cron); the store
+	// re-checks under a row lock so it grants at most once per period.
+	if user.Entitlements.Grant.IsDue(now()) {
+		newBalance, applied, err := uc.users.ApplyDueGrant(ctx, input.UserID, now())
+		if err != nil {
+			return nil, fmt.Errorf("grant refresh failed: %w", err)
+		}
+		if applied {
+			user.Balance = domain.NewBalance(newBalance)
+		}
+	}
+
 	plan := user.Plan
 
 	// Apply the user's entitlement time windows to the reported cost: a window

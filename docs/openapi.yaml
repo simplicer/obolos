@@ -9,7 +9,7 @@ info:
 
     All successful responses use a `{ "data": ... }` envelope. All errors use
     RFC 7807 / RFC 9457 `application/problem+json`.
-  version: 0.8.0-unstable
+  version: 0.9.0-unstable
   license:
     name: GNU AGPL v3
     url: https://www.gnu.org/licenses/agpl-3.0.txt
@@ -66,7 +66,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      version: { type: string, example: 0.8.0-unstable }
+                      version: { type: string, example: 0.9.0-unstable }
 
   /v1/charges:
     post:
@@ -466,6 +466,31 @@ components:
           type: array
           description: Recurring UTC time windows; the first match applies.
           items: { $ref: "#/components/schemas/TimeWindow" }
+        grant:
+          $ref: "#/components/schemas/Grant"
+    Grant:
+      type: object
+      description: >-
+        Periodic credit grant, applied lazily on access (no cron) and at most
+        once per period. `anchor` is maintained by the server.
+      properties:
+        mode:
+          type: string
+          enum: [reset, rollover, rolling]
+          description: >-
+            reset = monthly reset to amount (unused expire);
+            rollover = monthly add amount up to cap;
+            rolling = reset to amount every 30 days.
+        amount: { type: integer, format: int64, minimum: 0 }
+        cap:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Maximum balance for rollover (0 = uncapped).
+        anchor:
+          type: string
+          readOnly: true
+          description: Server-maintained marker of the last applied period.
     TimeWindow:
       type: object
       required: [action]

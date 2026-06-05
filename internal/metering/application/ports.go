@@ -27,6 +27,11 @@ type UserRepository interface {
 	// SetPlan atomically replaces the user's plan, balance and entitlement
 	// rules. Returns ErrUserNotFound if the user does not exist.
 	SetPlan(ctx context.Context, userID string, plan domain.Plan, credits int64, ent domain.Entitlements) error
+
+	// ApplyDueGrant applies the user's periodic credit grant if one is due,
+	// atomically (under a row lock, idempotent per period). It returns the
+	// resulting balance and whether a grant was applied.
+	ApplyDueGrant(ctx context.Context, userID string, now time.Time) (balance int64, applied bool, err error)
 }
 
 // EventRepository persists and retrieves metering events.

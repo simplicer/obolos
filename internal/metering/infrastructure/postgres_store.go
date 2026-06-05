@@ -207,6 +207,55 @@ func (s *PostgresStore) SetPlan(ctx context.Context, userID string, plan domain.
 	return nil
 }
 
+// ApplyDueGrant applies the user's periodic grant if one is due. It locks the
+// row, re-checks under the lock (so concurrent requests grant at most once per
+// period) and updates balance + the grant anchor atomically.
+func (s *PostgresStore) ApplyDueGrant(ctx context.Context, userID string, now time.Time) (int64, bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, false, fmt.Errorf("begin grant tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var balance int64
+	var planConfig []byte
+	err = tx.QueryRow(ctx,
+		`SELECT balance, plan_config FROM users WHERE id = $1 FOR UPDATE`,
+		userID,
+	).Scan(&balance, &planConfig)
+	if err == pgx.ErrNoRows {
+		return 0, false, application.ErrUserNotFound
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("lock user for grant: %w", err)
+	}
+
+	var ent domain.Entitlements
+	if err := unmarshalEntitlements(planConfig, &ent); err != nil {
+		return 0, false, fmt.Errorf("decode plan_config: %w", err)
+	}
+	if !ent.Grant.IsDue(now) {
+		return balance, false, nil
+	}
+
+	newBalance, newAnchor := ent.Grant.Applied(balance, now)
+	ent.Grant.Anchor = newAnchor
+	cfg, err := marshalEntitlements(ent)
+	if err != nil {
+		return 0, false, fmt.Errorf("encode plan_config: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET balance = $2, plan_config = $3, updated_at = NOW() WHERE id = $1`,
+		userID, newBalance, cfg,
+	); err != nil {
+		return 0, false, fmt.Errorf("apply grant: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, false, fmt.Errorf("commit grant: %w", err)
+	}
+	return newBalance, true, nil
+}
+
 // marshalEntitlements encodes entitlements to a JSON document for the
 // plan_config JSONB column.
 func marshalEntitlements(e domain.Entitlements) ([]byte, error) {

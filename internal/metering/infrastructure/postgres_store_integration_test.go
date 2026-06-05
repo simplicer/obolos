@@ -263,6 +263,53 @@ func TestIntegration_PlanConfigRoundTrip(t *testing.T) {
 	}
 }
 
+func TestIntegration_GrantAppliedOncePerPeriod(t *testing.T) {
+	store, ctx := newTestStore(t)
+
+	u := domain.NewUser("grace", domain.Plan{Type: domain.PlanTypePrepaid}, 0)
+	if err := store.Upsert(ctx, &u); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// A reset grant anchored in the distant past is due now.
+	ent := domain.Entitlements{Grant: domain.Grant{Mode: domain.GrantReset, Amount: 100, Anchor: "2000-01"}}
+	if err := store.SetPlan(ctx, "grace", domain.NewPrepaidPlan(), 0, ent); err != nil {
+		t.Fatalf("set plan: %v", err)
+	}
+
+	now := time.Now().UTC()
+
+	// Many concurrent grant attempts must apply the grant exactly once.
+	const n = 20
+	var wg sync.WaitGroup
+	var appliedCount int64
+	var mu sync.Mutex
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, applied, err := store.ApplyDueGrant(ctx, "grace", now)
+			if err != nil {
+				t.Errorf("apply grant: %v", err)
+				return
+			}
+			if applied {
+				mu.Lock()
+				appliedCount++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if appliedCount != 1 {
+		t.Errorf("grant applied %d times, want exactly 1", appliedCount)
+	}
+	got, _ := store.FindByID(ctx, "grace")
+	if got.Balance.Value() != 100 {
+		t.Errorf("balance = %d, want 100 (granted once)", got.Balance.Value())
+	}
+}
+
 func TestIntegration_MeterAtomic(t *testing.T) {
 	store, ctx := newTestStore(t)
 

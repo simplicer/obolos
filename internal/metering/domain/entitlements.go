@@ -30,10 +30,73 @@ type TimeWindow struct {
 	Factor float64      `json:"factor,omitempty"` // used by WindowMultiply
 }
 
+// GrantMode selects how a periodic credit grant renews the balance.
+type GrantMode string
+
+const (
+	// GrantReset: at each calendar-month boundary (UTC) the balance is reset to
+	// Amount; unused credits expire.
+	GrantReset GrantMode = "reset"
+	// GrantRollover: at each calendar-month boundary Amount is added to the
+	// balance, capped at Cap (0 = uncapped); unused credits roll over.
+	GrantRollover GrantMode = "rollover"
+	// GrantRolling: every 30 days from the last grant the balance is reset to
+	// Amount.
+	GrantRolling GrantMode = "rolling"
+)
+
+// Grant describes a periodic credit grant. Mode == "" means no grant.
+// Anchor is the marker of the last applied period ("YYYY-MM" for reset/rollover,
+// an RFC3339 timestamp for rolling); it is maintained by the store.
+type Grant struct {
+	Mode   GrantMode `json:"mode,omitempty"`
+	Amount int64     `json:"amount,omitempty"`
+	Cap    int64     `json:"cap,omitempty"`
+	Anchor string    `json:"anchor,omitempty"`
+}
+
+// IsDue reports whether a grant should be applied at time t given the anchor.
+func (g Grant) IsDue(t time.Time) bool {
+	switch g.Mode {
+	case GrantReset, GrantRollover:
+		return g.Anchor != t.UTC().Format("2006-01")
+	case GrantRolling:
+		if g.Anchor == "" {
+			return true
+		}
+		at, err := time.Parse(time.RFC3339, g.Anchor)
+		if err != nil {
+			return true
+		}
+		return t.UTC().Sub(at) >= 30*24*time.Hour
+	default:
+		return false
+	}
+}
+
+// Applied returns the new balance and the new anchor after applying the grant
+// to the given balance at time t.
+func (g Grant) Applied(balance int64, t time.Time) (newBalance int64, newAnchor string) {
+	switch g.Mode {
+	case GrantRollover:
+		newBalance = balance + g.Amount
+		if g.Cap > 0 && newBalance > g.Cap {
+			newBalance = g.Cap
+		}
+	default: // reset, rolling
+		newBalance = g.Amount
+	}
+	if g.Mode == GrantRolling {
+		return newBalance, t.UTC().Format(time.RFC3339)
+	}
+	return newBalance, t.UTC().Format("2006-01")
+}
+
 // Entitlements holds a user's credit-usage rules beyond the bare plan type.
 // It is stored per user as a JSON document; the zero value means "no rules".
 type Entitlements struct {
 	Windows []TimeWindow `json:"windows,omitempty"`
+	Grant   Grant        `json:"grant,omitempty"`
 }
 
 // WindowEffect returns the first matching window's action and factor at time t.

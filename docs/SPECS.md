@@ -72,6 +72,20 @@ Windows are set via `PUT /v1/users/{user_id}/plan` under
 `entitlements.windows`. This is where time-of-day logic lives — on the
 client's quota, not on price (ADR 0008).
 
+### 2.7 Periodic Credit Grant
+
+A user may carry a periodic grant (`entitlements.grant`):
+
+- `reset` — at each calendar-month boundary (UTC) the balance is reset to
+  `amount`; unused credits expire.
+- `rollover` — at each month boundary `amount` is added, capped at `cap`
+  (0 = uncapped); unused credits roll over.
+- `rolling` — the balance is reset to `amount` every 30 days from the last grant.
+
+Grants are applied **lazily** on the next charge or balance read (no scheduler)
+and, via a row-locked check on the period anchor, **at most once per period**
+even under concurrent requests. The `anchor` is server-maintained.
+
 ## 3. Configuration
 
 ### 3.1 Sources
