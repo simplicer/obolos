@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -52,7 +53,7 @@ func (s *PostgresStore) Close() {
 
 // List returns all users up to the given limit.
 func (s *PostgresStore) List(ctx context.Context, limit int) ([]domain.User, error) {
-	query := `SELECT id, plan_type, balance, overage_rate, created_at, updated_at FROM users ORDER BY created_at DESC`
+	query := `SELECT id, plan_type, balance, overage_rate, plan_config, created_at, updated_at FROM users ORDER BY created_at DESC`
 	args := []interface{}{}
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
@@ -69,8 +70,9 @@ func (s *PostgresStore) List(ctx context.Context, limit int) ([]domain.User, err
 		var u domain.User
 		var planType string
 		var overageRate float64
+		var planConfig []byte
 		var createdAt, updatedAt time.Time
-		err := rows.Scan(&u.ID, &planType, &u.Balance, &overageRate, &createdAt, &updatedAt)
+		err := rows.Scan(&u.ID, &planType, &u.Balance, &overageRate, &planConfig, &createdAt, &updatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
@@ -79,6 +81,9 @@ func (s *PostgresStore) List(ctx context.Context, limit int) ([]domain.User, err
 			return nil, fmt.Errorf("invalid plan type: %w", err)
 		}
 		u.Plan = domain.Plan{Type: pt, OverageRate: overageRate}
+		if err := unmarshalEntitlements(planConfig, &u.Entitlements); err != nil {
+			return nil, fmt.Errorf("decode plan_config: %w", err)
+		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
 		u.UpdatedAt = updatedAt.Format(time.RFC3339)
 		users = append(users, u)
@@ -92,12 +97,13 @@ func (s *PostgresStore) FindByID(ctx context.Context, userID string) (*domain.Us
 	var u domain.User
 	var planType string
 	var overageRate float64
+	var planConfig []byte
 	var createdAt, updatedAt time.Time
 
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, plan_type, balance, overage_rate, created_at, updated_at FROM users WHERE id = $1`,
+		`SELECT id, plan_type, balance, overage_rate, plan_config, created_at, updated_at FROM users WHERE id = $1`,
 		userID,
-	).Scan(&u.ID, &planType, &u.Balance, &overageRate, &createdAt, &updatedAt)
+	).Scan(&u.ID, &planType, &u.Balance, &overageRate, &planConfig, &createdAt, &updatedAt)
 
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -111,6 +117,9 @@ func (s *PostgresStore) FindByID(ctx context.Context, userID string) (*domain.Us
 		return nil, fmt.Errorf("invalid plan type in DB: %w", err)
 	}
 	u.Plan = domain.Plan{Type: pt, OverageRate: overageRate}
+	if err := unmarshalEntitlements(planConfig, &u.Entitlements); err != nil {
+		return nil, fmt.Errorf("decode plan_config: %w", err)
+	}
 	u.CreatedAt = createdAt.Format(time.RFC3339)
 	u.UpdatedAt = updatedAt.Format(time.RFC3339)
 
@@ -119,15 +128,20 @@ func (s *PostgresStore) FindByID(ctx context.Context, userID string) (*domain.Us
 
 // Upsert creates or updates a user.
 func (s *PostgresStore) Upsert(ctx context.Context, user *domain.User) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO users (id, plan_type, balance, overage_rate, updated_at)
-		 VALUES ($1, $2, $3, $4, NOW())
+	planConfig, err := marshalEntitlements(user.Entitlements)
+	if err != nil {
+		return fmt.Errorf("encode plan_config: %w", err)
+	}
+	_, err = s.pool.Exec(ctx,
+		`INSERT INTO users (id, plan_type, balance, overage_rate, plan_config, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, NOW())
 		 ON CONFLICT (id) DO UPDATE SET
 		   plan_type = EXCLUDED.plan_type,
 		   balance = EXCLUDED.balance,
 		   overage_rate = EXCLUDED.overage_rate,
+		   plan_config = EXCLUDED.plan_config,
 		   updated_at = NOW()`,
-		user.ID, user.Plan.Type, user.Balance.Value(), user.Plan.OverageRate,
+		user.ID, user.Plan.Type, user.Balance.Value(), user.Plan.OverageRate, planConfig,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert user: %w", err)
@@ -138,11 +152,15 @@ func (s *PostgresStore) Upsert(ctx context.Context, user *domain.User) error {
 // CreateIfAbsent inserts the user only if its id is not already present.
 // An existing user (and its balance) is left untouched.
 func (s *PostgresStore) CreateIfAbsent(ctx context.Context, user *domain.User) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO users (id, plan_type, balance, overage_rate, updated_at)
-		 VALUES ($1, $2, $3, $4, NOW())
+	planConfig, err := marshalEntitlements(user.Entitlements)
+	if err != nil {
+		return fmt.Errorf("encode plan_config: %w", err)
+	}
+	_, err = s.pool.Exec(ctx,
+		`INSERT INTO users (id, plan_type, balance, overage_rate, plan_config, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, NOW())
 		 ON CONFLICT (id) DO NOTHING`,
-		user.ID, user.Plan.Type, user.Balance.Value(), user.Plan.OverageRate,
+		user.ID, user.Plan.Type, user.Balance.Value(), user.Plan.OverageRate, planConfig,
 	)
 	if err != nil {
 		return fmt.Errorf("create user if absent: %w", err)
@@ -169,12 +187,16 @@ func (s *PostgresStore) AddCredits(ctx context.Context, userID string, amount in
 	return newBalance, nil
 }
 
-// SetPlan atomically replaces the user's plan and balance.
-func (s *PostgresStore) SetPlan(ctx context.Context, userID string, plan domain.Plan, credits int64) error {
+// SetPlan atomically replaces the user's plan, balance and entitlement rules.
+func (s *PostgresStore) SetPlan(ctx context.Context, userID string, plan domain.Plan, credits int64, ent domain.Entitlements) error {
+	planConfig, err := marshalEntitlements(ent)
+	if err != nil {
+		return fmt.Errorf("encode plan_config: %w", err)
+	}
 	tag, err := s.pool.Exec(ctx,
-		`UPDATE users SET plan_type = $2, balance = $3, overage_rate = $4, updated_at = NOW()
+		`UPDATE users SET plan_type = $2, balance = $3, overage_rate = $4, plan_config = $5, updated_at = NOW()
 		 WHERE id = $1`,
-		userID, plan.Type, credits, plan.OverageRate,
+		userID, plan.Type, credits, plan.OverageRate, planConfig,
 	)
 	if err != nil {
 		return fmt.Errorf("set plan: %w", err)
@@ -183,6 +205,21 @@ func (s *PostgresStore) SetPlan(ctx context.Context, userID string, plan domain.
 		return application.ErrUserNotFound
 	}
 	return nil
+}
+
+// marshalEntitlements encodes entitlements to a JSON document for the
+// plan_config JSONB column.
+func marshalEntitlements(e domain.Entitlements) ([]byte, error) {
+	return json.Marshal(e)
+}
+
+// unmarshalEntitlements decodes the plan_config JSONB document; an empty or
+// nil document yields the zero value (no rules).
+func unmarshalEntitlements(data []byte, e *domain.Entitlements) error {
+	if len(data) == 0 {
+		return nil
+	}
+	return json.Unmarshal(data, e)
 }
 
 // --- EventRepository ---

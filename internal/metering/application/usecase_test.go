@@ -70,7 +70,7 @@ func (m *mockUserRepo) AddCredits(_ context.Context, userID string, amount int64
 	return u.Balance.Value(), nil
 }
 
-func (m *mockUserRepo) SetPlan(_ context.Context, userID string, plan domain.Plan, credits int64) error {
+func (m *mockUserRepo) SetPlan(_ context.Context, userID string, plan domain.Plan, credits int64, ent domain.Entitlements) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u, ok := m.users[userID]
@@ -79,6 +79,7 @@ func (m *mockUserRepo) SetPlan(_ context.Context, userID string, plan domain.Pla
 	}
 	u.Plan = plan
 	u.Balance = domain.NewBalance(credits)
+	u.Entitlements = ent
 	return nil
 }
 
@@ -303,6 +304,57 @@ func TestMeterUseCase_UserNotFound(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for unknown user")
+	}
+}
+
+func TestMeterUseCase_WindowFree(t *testing.T) {
+	users := newMockUserRepo()
+	events := newMockEventRepo()
+	users.Upsert(context.Background(), &domain.User{
+		ID: "user-1", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(100),
+		Entitlements: domain.Entitlements{Windows: []domain.TimeWindow{{Action: domain.WindowFree}}},
+	})
+
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
+	res, err := uc.Execute(context.Background(), MeterInput{UserID: "user-1", Cost: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Cost != 0 || res.Balance != 100 {
+		t.Errorf("free window: got cost=%d balance=%d, want 0/100", res.Cost, res.Balance)
+	}
+}
+
+func TestMeterUseCase_WindowBlock(t *testing.T) {
+	users := newMockUserRepo()
+	events := newMockEventRepo()
+	users.Upsert(context.Background(), &domain.User{
+		ID: "user-1", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(100),
+		Entitlements: domain.Entitlements{Windows: []domain.TimeWindow{{Action: domain.WindowBlock}}},
+	})
+
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
+	_, err := uc.Execute(context.Background(), MeterInput{UserID: "user-1", Cost: 5})
+	if err != ErrBlockedByWindow {
+		t.Errorf("expected ErrBlockedByWindow, got %v", err)
+	}
+}
+
+func TestMeterUseCase_WindowMultiply(t *testing.T) {
+	users := newMockUserRepo()
+	events := newMockEventRepo()
+	users.Upsert(context.Background(), &domain.User{
+		ID: "user-1", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(100),
+		Entitlements: domain.Entitlements{Windows: []domain.TimeWindow{{Action: domain.WindowMultiply, Factor: 2}}},
+	})
+
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
+	res, err := uc.Execute(context.Background(), MeterInput{UserID: "user-1", Cost: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Cost != 10 || res.Balance != 90 {
+		t.Errorf("multiply window: got cost=%d balance=%d, want 10/90", res.Cost, res.Balance)
 	}
 }
 

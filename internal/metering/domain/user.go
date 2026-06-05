@@ -1,12 +1,13 @@
 package domain
 
-// User represents a metered user with their balance and plan.
+// User represents a metered user with their balance, plan and entitlement rules.
 type User struct {
-	ID        string
-	Plan      Plan
-	Balance   Balance
-	CreatedAt string
-	UpdatedAt string
+	ID           string
+	Plan         Plan
+	Balance      Balance
+	Entitlements Entitlements
+	CreatedAt    string
+	UpdatedAt    string
 }
 
 // NewUser creates a new user with the given ID, plan, and initial balance.

@@ -58,6 +58,20 @@ MeteringEvent {
 }
 ```
 
+### 2.6 Entitlement Time Windows
+
+Each user may carry entitlement rules (`plan_config`). Time windows are
+recurring UTC ranges (hours and/or days); the first matching window applies one
+of three effects to a charge:
+
+- `free` — the request passes and **no credits are deducted** (logged as 0).
+- `multiply` — the reported cost is scaled by `factor`.
+- `block` — the request is **denied** with `403 blocked_by_window`.
+
+Windows are set via `PUT /v1/users/{user_id}/plan` under
+`entitlements.windows`. This is where time-of-day logic lives — on the
+client's quota, not on price (ADR 0008).
+
 ## 3. Configuration
 
 ### 3.1 Sources

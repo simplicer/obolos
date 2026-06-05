@@ -14,6 +14,7 @@ var (
 	ErrInvalidPlanType     = errors.New("invalid_plan_type")
 	ErrInvalidAmount       = errors.New("invalid_amount")
 	ErrInvalidCost         = errors.New("invalid_cost")
+	ErrBlockedByWindow     = errors.New("blocked_by_window")
 )
 
 // now returns the current UTC time. Extracted for testability.

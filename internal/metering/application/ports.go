@@ -24,9 +24,9 @@ type UserRepository interface {
 	// AddCredits atomically adds amount to the balance and returns the new
 	// balance. Returns ErrUserNotFound if the user does not exist.
 	AddCredits(ctx context.Context, userID string, amount int64) (int64, error)
-	// SetPlan atomically replaces the user's plan and balance. Returns
-	// ErrUserNotFound if the user does not exist.
-	SetPlan(ctx context.Context, userID string, plan domain.Plan, credits int64) error
+	// SetPlan atomically replaces the user's plan, balance and entitlement
+	// rules. Returns ErrUserNotFound if the user does not exist.
+	SetPlan(ctx context.Context, userID string, plan domain.Plan, credits int64, ent domain.Entitlements) error
 }
 
 // EventRepository persists and retrieves metering events.

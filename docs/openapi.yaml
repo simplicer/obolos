@@ -9,7 +9,7 @@ info:
 
     All successful responses use a `{ "data": ... }` envelope. All errors use
     RFC 7807 / RFC 9457 `application/problem+json`.
-  version: 0.7.0-unstable
+  version: 0.8.0-unstable
   license:
     name: GNU AGPL v3
     url: https://www.gnu.org/licenses/agpl-3.0.txt
@@ -66,7 +66,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      version: { type: string, example: 0.7.0-unstable }
+                      version: { type: string, example: 0.8.0-unstable }
 
   /v1/charges:
     post:
@@ -106,6 +106,12 @@ paths:
                 properties:
                   data: { $ref: "#/components/schemas/MeterResult" }
                   error: { $ref: "#/components/schemas/Problem" }
+        "403":
+          description: >-
+            Blocked by an entitlement time window (`blocked_by_window`).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -261,6 +267,8 @@ paths:
                   format: double
                   minimum: 0
                   description: Per-unit overage rate (hybrid plans)
+                entitlements:
+                  $ref: "#/components/schemas/Entitlements"
       responses:
         "200":
           description: Plan updated
@@ -450,6 +458,35 @@ components:
         plan_type: { type: string }
         overage: { type: boolean }
         created_at: { type: string, format: date-time }
+    Entitlements:
+      type: object
+      description: Per-user credit-usage rules beyond the bare plan type.
+      properties:
+        windows:
+          type: array
+          description: Recurring UTC time windows; the first match applies.
+          items: { $ref: "#/components/schemas/TimeWindow" }
+    TimeWindow:
+      type: object
+      required: [action]
+      properties:
+        hours:
+          type: string
+          description: '"HH:MM-HH:MM" (UTC); empty means the whole day.'
+          example: "09:00-17:00"
+        days:
+          type: array
+          items: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] }
+          description: Empty means every day.
+        action:
+          type: string
+          enum: [free, multiply, block]
+          description: free = no deduction; multiply = scale cost by factor; block = deny (403).
+        factor:
+          type: number
+          format: double
+          minimum: 0
+          description: Multiplier used when action is "multiply".
 
 security:
   - proxyIdentity: []

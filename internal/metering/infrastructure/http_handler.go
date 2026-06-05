@@ -124,6 +124,12 @@ func (h *Handler) HandleCreateCharge(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
+		if errors.Is(err, application.ErrBlockedByWindow) {
+			h.logger.Info("charge blocked by time window",
+				slog.String("owner_id", userID), slog.String("api", api), slog.String("endpoint", endpoint))
+			writeProblem(w, http.StatusForbidden, "blocked_by_window", "Requests are not allowed in the current time window")
+			return
+		}
 		if errors.Is(err, application.ErrInsufficientCredits) {
 			h.logger.Info("insufficient credits",
 				slog.String("owner_id", userID),
@@ -260,9 +266,10 @@ func (h *Handler) HandlePutPlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		PlanType    string  `json:"plan_type"`
-		Credits     int64   `json:"credits"`
-		OverageRate float64 `json:"overage_rate"`
+		PlanType     string              `json:"plan_type"`
+		Credits      int64               `json:"credits"`
+		OverageRate  float64             `json:"overage_rate"`
+		Entitlements domain.Entitlements `json:"entitlements"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeProblem(w, http.StatusBadRequest, "invalid_body", "Invalid JSON body")
@@ -270,10 +277,11 @@ func (h *Handler) HandlePutPlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.setPlan.Execute(r.Context(), application.SetPlanInput{
-		UserID:      userID,
-		PlanType:    body.PlanType,
-		Credits:     body.Credits,
-		OverageRate: body.OverageRate,
+		UserID:       userID,
+		PlanType:     body.PlanType,
+		Credits:      body.Credits,
+		OverageRate:  body.OverageRate,
+		Entitlements: body.Entitlements,
 	})
 	if err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {

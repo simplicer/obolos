@@ -62,13 +62,14 @@ func (s *inMemoryStore) AddCredits(_ context.Context, userID string, amount int6
 	return u.Balance.Value(), nil
 }
 
-func (s *inMemoryStore) SetPlan(_ context.Context, userID string, plan domain.Plan, credits int64) error {
+func (s *inMemoryStore) SetPlan(_ context.Context, userID string, plan domain.Plan, credits int64, ent domain.Entitlements) error {
 	u, ok := s.users[userID]
 	if !ok {
 		return application.ErrUserNotFound
 	}
 	u.Plan = plan
 	u.Balance = domain.NewBalance(credits)
+	u.Entitlements = ent
 	return nil
 }
 

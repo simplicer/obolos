@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -47,13 +48,19 @@ func newTestStore(t *testing.T) (*PostgresStore, context.Context) {
 func applyMigration(t *testing.T, ctx context.Context, store *PostgresStore) {
 	t.Helper()
 	// package dir is internal/metering/infrastructure; repo root is three up.
-	path := filepath.Join("..", "..", "..", "migrations", "001_initial_schema.sql")
-	sqlBytes, err := os.ReadFile(path)
+	paths, err := filepath.Glob(filepath.Join("..", "..", "..", "migrations", "*.sql"))
 	if err != nil {
-		t.Fatalf("read migration: %v", err)
+		t.Fatalf("glob migrations: %v", err)
 	}
-	if _, err := store.pool.Exec(ctx, string(sqlBytes)); err != nil {
-		t.Fatalf("apply migration: %v", err)
+	sort.Strings(paths)
+	for _, path := range paths {
+		sqlBytes, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read migration %s: %v", path, err)
+		}
+		if _, err := store.pool.Exec(ctx, string(sqlBytes)); err != nil {
+			t.Fatalf("apply migration %s: %v", path, err)
+		}
 	}
 }
 
@@ -221,6 +228,38 @@ func TestIntegration_ConcurrentCreditsAreAtomic(t *testing.T) {
 	got, _ := store.FindByID(ctx, "erin")
 	if got.Balance.Value() != n {
 		t.Errorf("balance = %d, want %d (lost updates)", got.Balance.Value(), n)
+	}
+}
+
+func TestIntegration_PlanConfigRoundTrip(t *testing.T) {
+	store, ctx := newTestStore(t)
+
+	u := domain.NewUser("frank", domain.Plan{Type: domain.PlanTypePrepaid}, 100)
+	if err := store.Upsert(ctx, &u); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	ent := domain.Entitlements{Windows: []domain.TimeWindow{
+		{Hours: "09:00-17:00", Days: []string{"mon", "fri"}, Action: domain.WindowMultiply, Factor: 1.5},
+		{Hours: "00:00-06:00", Action: domain.WindowFree},
+	}}
+	if err := store.SetPlan(ctx, "frank", domain.Plan{Type: domain.PlanTypeHybrid, OverageRate: 0.02}, 200, ent); err != nil {
+		t.Fatalf("set plan: %v", err)
+	}
+
+	got, err := store.FindByID(ctx, "frank")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if got.Plan.Type != domain.PlanTypeHybrid || got.Balance.Value() != 200 {
+		t.Errorf("plan/balance not persisted: %v / %d", got.Plan.Type, got.Balance.Value())
+	}
+	if len(got.Entitlements.Windows) != 2 {
+		t.Fatalf("expected 2 windows, got %d", len(got.Entitlements.Windows))
+	}
+	w := got.Entitlements.Windows[0]
+	if w.Action != domain.WindowMultiply || w.Factor != 1.5 || len(w.Days) != 2 {
+		t.Errorf("window not round-tripped: %+v", w)
 	}
 }
 

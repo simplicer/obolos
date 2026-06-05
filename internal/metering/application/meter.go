@@ -48,6 +48,17 @@ func (uc *MeterUseCase) Execute(ctx context.Context, input MeterInput) (*MeterRe
 
 	plan := user.Plan
 
+	// Apply the user's entitlement time windows to the reported cost: a window
+	// may block the request, make it free, or scale its cost.
+	cost := input.Cost
+	if adjusted, blocked, matched := user.Entitlements.ApplyWindowToCost(cost, now()); matched {
+		if blocked {
+			return &MeterResult{Cost: cost, Balance: user.Balance.Value(), PlanType: plan.String()}, ErrBlockedByWindow
+		}
+		cost = adjusted
+	}
+	input.Cost = cost
+
 	// Zero cost, or an unlimited plan: pass through with no deduction, but still
 	// record the event for analytics (cost logged as the reported value / 0).
 	if input.Cost == 0 || !plan.ShouldDeduct() {

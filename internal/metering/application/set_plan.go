@@ -19,10 +19,11 @@ func NewSetPlanUseCase(users UserRepository) *SetPlanUseCase {
 
 // SetPlanInput contains the parameters for a plan change.
 type SetPlanInput struct {
-	UserID      string
-	PlanType    string
-	Credits     int64
-	OverageRate float64
+	UserID       string
+	PlanType     string
+	Credits      int64
+	OverageRate  float64
+	Entitlements domain.Entitlements
 }
 
 // Execute sets the user's plan and credits.
@@ -33,7 +34,7 @@ func (uc *SetPlanUseCase) Execute(ctx context.Context, input SetPlanInput) (*Set
 	}
 
 	plan := domain.Plan{Type: pt, OverageRate: input.OverageRate}
-	if err := uc.users.SetPlan(ctx, input.UserID, plan, input.Credits); err != nil {
+	if err := uc.users.SetPlan(ctx, input.UserID, plan, input.Credits, input.Entitlements); err != nil {
 		if err == ErrUserNotFound {
 			return nil, ErrUserNotFound
 		}

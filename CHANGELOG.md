@@ -37,6 +37,13 @@ release will be `1.0.0`.
   RPC-style draft (`/v1/meter`, `/v1/admin/.../topup`).
 
 ### Added
+- Per-user **entitlement time windows** (`plan_config` JSONB, migration `002`).
+  Each window (UTC hours/days) applies one of three effects to a charge:
+  `free` (passes, no deduction), `multiply` (scales the reported cost by a
+  factor), or `block` (denied with `403 blocked_by_window`). First matching
+  window wins. Configured via `PUT /v1/users/{id}/plan` under
+  `entitlements.windows`. This moves time-of-day logic from price to the
+  client's quota (ADR 0008).
 - Acceptance / end-to-end test suite driving the full HTTP stack over a
   loopback server with a real client: full metering journey, authorization
   boundaries (owner / admin / forbidden / unauthorized) and prepaid
