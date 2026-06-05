@@ -30,5 +30,8 @@ release will be `1.0.0`.
   `router.go`): stdlib `net/http` handlers for all endpoints with RFC 7807
   problem+json errors and a `{ "data": ... }` envelope; Go 1.22+ ServeMux
   routing with auth, logging, recovery and request-size middleware.
+- PostgreSQL persistence (`internal/metering/infrastructure/postgres_store.go`):
+  `pgx/v5`-backed `UserRepository` and `EventRepository`, including atomic
+  meter-and-deduct, with schema migration `migrations/001_initial_schema.sql`.
 
 [Unreleased]: https://codeberg.org/simplicer/metering/compare/main
