@@ -1,5 +1,5 @@
-# Build artifacts
-/bin/
+# Build artifacts (the compiled binary; tracked scripts also live in bin/)
+/bin/metering
 coverage.out
 coverage.html
 

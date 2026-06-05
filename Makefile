@@ -1,4 +1,4 @@
-.PHONY: build run test clean fmt lint help docker-build docker-up docker-down
+.PHONY: build run test test-integration clean fmt lint help docker-build docker-up docker-down
 
 # Project
 MODULE     := codeberg.org/simplicer/metering
@@ -26,6 +26,9 @@ test: ## Run all tests
 
 test-short: ## Run tests without race detection
 	$(GO) test -count=1 ./...
+
+test-integration: ## Run integration tests against a Postgres container (needs Docker)
+	./bin/run-integration-tests
 
 test-cover: ## Run tests with coverage report
 	$(GO) test -race -coverprofile=coverage.out ./...

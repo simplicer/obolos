@@ -22,6 +22,9 @@ release will be `1.0.0`.
   RPC-style draft (`/v1/meter`, `/v1/admin/.../topup`).
 
 ### Added
+- Integration test suite for `PostgresStore` (build tag `integration`),
+  runnable against a disposable Postgres container via `make test-integration`
+  (`bin/run-integration-tests`).
 - Project foundation: `go.mod`, `Makefile`, `LICENSE` (AGPL v3), `README.md`,
   `AGENTS.md`, directory layout (`cmd/`, `internal/`, `etc/`, `infra/`,
   `migrations/`, `var/log/`).
