@@ -12,9 +12,14 @@ release will be `1.0.0`.
 ## [Unreleased]
 
 ### Changed
+- Renamed container/deploy artifacts to vendor-neutral names
+  (`infra/image/Containerfile`, `infra/compose.yaml`) and Makefile targets
+  (`image-build`, `stack-up`, `stack-down`); added `infra/compose.test.yaml`
+  with `make test-compose` to run the whole test suite in containers
+  (see ADR 0007).
 - Added Architecture Decision Records under `docs/adrs/` (DDD vertical slicing,
   stdlib-only HTTP, proxy-trusted identity, signed-integer balance, layered
-  JSON config, RESTful resource API).
+  JSON config, RESTful resource API, vendor-neutral infra naming).
 - Relocated `SPECS.md` to `docs/SPECS.md` and added the OpenAPI 3.1 contract
   at `docs/openapi.yaml`. Reconciled `SPECS.md`, `AGENTS.md` and `README.md`
   with the implemented RESTful surface (`POST /v1/charges`,

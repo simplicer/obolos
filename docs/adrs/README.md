@@ -13,3 +13,4 @@ resulting *rules*.
 | [0004](0004-signed-integer-balance.md) | Signed-integer balance for hybrid overage | Accepted |
 | [0005](0005-layered-json-configuration.md) | Layered JSON configuration sources | Accepted |
 | [0006](0006-restful-resource-api.md) | RESTful resource API over RPC endpoints | Accepted |
+| [0007](0007-vendor-neutral-infra-naming.md) | Vendor-neutral naming for container and deploy artifacts | Accepted |
