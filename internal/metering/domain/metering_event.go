@@ -6,18 +6,18 @@ import (
 
 // MeteringEvent records a single metered API request.
 type MeteringEvent struct {
-	ID                string
-	UserID            string
-	API               string
-	Endpoint          string
-	BaseCost          int64
-	AppliedMultiplier float64
-	FinalCost         int64
-	BalanceBefore     int64
-	BalanceAfter      int64
-	PlanType          string
-	Overage           bool
-	CreatedAt         time.Time
+	ID                string    `json:"id"`
+	UserID            string    `json:"user_id"`
+	API               string    `json:"api"`
+	Endpoint          string    `json:"endpoint"`
+	BaseCost          int64     `json:"base_cost"`
+	AppliedMultiplier float64   `json:"applied_multiplier"`
+	FinalCost         int64     `json:"final_cost"`
+	BalanceBefore     int64     `json:"balance_before"`
+	BalanceAfter      int64     `json:"balance_after"`
+	PlanType          string    `json:"plan_type"`
+	Overage           bool      `json:"overage"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // NewMeteringEvent creates a new event with the given details.

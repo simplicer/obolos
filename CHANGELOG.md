@@ -40,5 +40,8 @@ release will be `1.0.0`.
 ### Fixed
 - Startup/shutdown logs now identify the service as `metering` instead of
   the copy-pasted `tollgate` name.
+- `MeteringEvent` now serializes with `snake_case` JSON keys
+  (`base_cost`, `final_cost`, `created_at`, …), consistent with every other
+  response body, instead of Go's default PascalCase field names.
 
 [Unreleased]: https://codeberg.org/simplicer/metering/compare/main
