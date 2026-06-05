@@ -1,0 +1,46 @@
+# Runs the whole test system inside containers: a disposable PostgreSQL plus
+# a Go test runner that executes the unit/acceptance suite and the
+# integration suite against that database.
+#
+#   make test-compose
+#
+# Paths are relative to this file's directory (infra/), so ../ is the repo root.
+name: metering-tests
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: metering
+      POSTGRES_PASSWORD: metering
+      POSTGRES_DB: metering_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metering -d metering_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  tests:
+    image: golang:1.24-alpine
+    working_dir: /src
+    volumes:
+      - ../:/src
+      - gomodcache:/go/pkg/mod
+    environment:
+      TEST_DATABASE_URL: postgres://metering:metering@db:5432/metering_test?sslmode=disable
+      GOFLAGS: -count=1
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo ">> unit + acceptance + e2e"
+        go test ./...
+        echo ">> integration (against db)"
+        go test -tags integration ./internal/metering/infrastructure/ -run Integration -v
+
+volumes:
+  gomodcache:

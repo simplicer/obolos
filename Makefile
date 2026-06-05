@@ -30,6 +30,10 @@ test-short: ## Run tests without race detection
 test-integration: ## Run integration tests against a Postgres container (needs Docker)
 	./bin/run-integration-tests
 
+test-compose: ## Run the full test suite (unit + integration) inside containers
+	docker compose -f infra/compose.test.yaml up --exit-code-from tests; \
+	rc=$$?; docker compose -f infra/compose.test.yaml down >/dev/null 2>&1 || true; exit $$rc
+
 test-cover: ## Run tests with coverage report
 	$(GO) test -race -coverprofile=coverage.out ./...
 	$(GO) tool cover -html=coverage.out -o coverage.html
