@@ -164,6 +164,60 @@ func TestE2E_AuthorizationBoundaries(t *testing.T) {
 	}
 }
 
+func TestE2E_BlockedByWindowReturns403(t *testing.T) {
+	srv, store := e2eServer(t)
+	c := &e2eClient{t: t, base: srv.URL, http: srv.Client()}
+
+	store.Upsert(context.Background(), &domain.User{
+		ID: "carol", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(100),
+		Entitlements: domain.Entitlements{Windows: []domain.TimeWindow{{Action: domain.WindowBlock}}},
+	})
+
+	proxy := map[string]string{"X-User-Id": "carol", "X-Cost": "5"}
+	code, data := c.do(http.MethodPost, "/v1/charges", proxy, "")
+	if code != http.StatusForbidden {
+		t.Fatalf("blocked window: got %d, want 403 (%v)", code, data)
+	}
+	if errObj, ok := data["_error"].(map[string]any); !ok || errObj["title"] != "blocked_by_window" {
+		t.Errorf("expected blocked_by_window problem, got %v", data)
+	}
+}
+
+func TestE2E_RateLimitReturns429(t *testing.T) {
+	srv, store := e2eServer(t)
+	c := &e2eClient{t: t, base: srv.URL, http: srv.Client()}
+
+	store.Upsert(context.Background(), &domain.User{
+		ID: "dan", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(1000),
+		Entitlements: domain.Entitlements{RateLimitPerMin: 1},
+	})
+
+	proxy := map[string]string{"X-User-Id": "dan", "X-Cost": "1"}
+	if code, _ := c.do(http.MethodPost, "/v1/charges", proxy, ""); code != http.StatusCreated {
+		t.Fatalf("first charge: got %d, want 201", code)
+	}
+	code, data := c.do(http.MethodPost, "/v1/charges", proxy, "")
+	if code != http.StatusTooManyRequests {
+		t.Fatalf("rate limited: got %d, want 429 (%v)", code, data)
+	}
+}
+
+func TestE2E_IdempotentCharge(t *testing.T) {
+	srv, store := e2eServer(t)
+	c := &e2eClient{t: t, base: srv.URL, http: srv.Client()}
+
+	store.Upsert(context.Background(), &domain.User{
+		ID: "eve", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(100),
+	})
+
+	hdr := map[string]string{"X-User-Id": "eve", "X-Cost": "10", "X-Request-Id": "req-eve-1"}
+	_, d1 := c.do(http.MethodPost, "/v1/charges", hdr, "")
+	_, d2 := c.do(http.MethodPost, "/v1/charges", hdr, "")
+	if d1["balance"].(float64) != 90 || d2["balance"].(float64) != 90 {
+		t.Errorf("idempotent charge: got %v then %v, want 90/90", d1["balance"], d2["balance"])
+	}
+}
+
 func TestE2E_PrepaidExhaustionReturns402(t *testing.T) {
 	srv, store := e2eServer(t)
 	c := &e2eClient{t: t, base: srv.URL, http: srv.Client()}
