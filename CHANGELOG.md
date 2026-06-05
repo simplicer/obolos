@@ -33,5 +33,8 @@ release will be `1.0.0`.
 - PostgreSQL persistence (`internal/metering/infrastructure/postgres_store.go`):
   `pgx/v5`-backed `UserRepository` and `EventRepository`, including atomic
   meter-and-deduct, with schema migration `migrations/001_initial_schema.sql`.
+- Server entry point (`cmd/server/main.go`): loads configuration, wires the
+  PostgreSQL store, pricing engine and use cases into the HTTP router with
+  structured `slog` JSON logging, and runs the server with graceful shutdown.
 
 [Unreleased]: https://codeberg.org/simplicer/metering/compare/main
