@@ -26,5 +26,9 @@ release will be `1.0.0`.
   resolves per-API/per-endpoint cost with time modifiers; pricing and
   service config loaders (`pricing_loader.go`, `config_loader.go`) support
   local JSON files, remote HTTP sources with TTL refresh, and env overrides.
+- HTTP infrastructure (`internal/metering/infrastructure/http_handler.go`,
+  `router.go`): stdlib `net/http` handlers for all endpoints with RFC 7807
+  problem+json errors and a `{ "data": ... }` envelope; Go 1.22+ ServeMux
+  routing with auth, logging, recovery and request-size middleware.
 
 [Unreleased]: https://codeberg.org/simplicer/metering/compare/main
