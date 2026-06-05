@@ -215,7 +215,7 @@ Response 200:
 
 ```
 GET /health → { "data": { "status": "ok" } }
-GET /version → { "data": { "version": "0.11.0-unstable" } }
+GET /version → { "data": { "version": "1.0.0" } }
 ```
 
 ## 5. Database Schema
