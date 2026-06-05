@@ -130,6 +130,10 @@ func (h *Handler) HandleCreateCharge(w http.ResponseWriter, r *http.Request) {
 			writeProblem(w, http.StatusForbidden, "blocked_by_window", "Requests are not allowed in the current time window")
 			return
 		}
+		if errors.Is(err, application.ErrRateLimited) {
+			writeProblem(w, http.StatusTooManyRequests, "rate_limit_exceeded", "Too many requests for this user")
+			return
+		}
 		if errors.Is(err, application.ErrInsufficientCredits) {
 			h.logger.Info("insufficient credits",
 				slog.String("owner_id", userID),

@@ -174,6 +174,17 @@ func TestIntegration_EventsSaveAndAggregate(t *testing.T) {
 	if sum != 15 {
 		t.Errorf("sum = %d, want 15", sum)
 	}
+
+	recent, err := store.CountByUserSince(ctx, "user-b", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if recent != 3 {
+		t.Errorf("count since -1h = %d, want 3", recent)
+	}
+	if future, _ := store.CountByUserSince(ctx, "user-b", now.Add(time.Hour)); future != 0 {
+		t.Errorf("count since +1h = %d, want 0", future)
+	}
 }
 
 func TestIntegration_CreateIfAbsentDoesNotReset(t *testing.T) {

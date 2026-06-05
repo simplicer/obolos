@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"codeberg.org/simplicer/metering/internal/metering/domain"
 )
@@ -59,6 +60,17 @@ func (uc *MeterUseCase) Execute(ctx context.Context, input MeterInput) (*MeterRe
 	}
 
 	plan := user.Plan
+
+	// Per-user rate limit: count this user's events in the trailing 60s.
+	if limit := user.Entitlements.RateLimitPerMin; limit > 0 {
+		count, err := uc.events.CountByUserSince(ctx, input.UserID, now().Add(-time.Minute))
+		if err != nil {
+			return nil, fmt.Errorf("rate check failed: %w", err)
+		}
+		if count >= limit {
+			return &MeterResult{Cost: input.Cost, Balance: user.Balance.Value(), PlanType: plan.String()}, ErrRateLimited
+		}
+	}
 
 	// Apply the user's entitlement time windows to the reported cost: a window
 	// may block the request, make it free, or scale its cost.

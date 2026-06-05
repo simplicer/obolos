@@ -345,6 +345,20 @@ func (s *PostgresStore) SumCostByUserAndDateRange(ctx context.Context, userID st
 	return sum, nil
 }
 
+// CountByUserSince returns how many events the user recorded at or after the
+// given time, using SQL aggregation.
+func (s *PostgresStore) CountByUserSince(ctx context.Context, userID string, since time.Time) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM metering_events WHERE user_id = $1 AND created_at >= $2`,
+		userID, since,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count events: %w", err)
+	}
+	return count, nil
+}
+
 // --- Meterer (atomic balance deduction + event recording) ---
 
 // MeterAtomic performs balance deduction and event recording in a single DB transaction.

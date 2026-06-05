@@ -132,7 +132,7 @@ Every user has exactly one active plan. Plans define:
 - Included credits (for prepaid/hybrid)
 - Entitlement rules (in `plan_config`): time windows — free / multiply / block;
   periodic grant — reset / rollover / rolling (lazy, once per period);
-  rate limits (roadmap)
+  rate limit — `rate_limit_per_min` (fixed 60s window over events, 429)
 
 The *price* of a request is NOT a plan concern — it is reported by the caller
 (`X-Cost`). The plan governs how the client's credits may be spent, not what

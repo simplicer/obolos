@@ -37,6 +37,10 @@ release will be `1.0.0`.
   RPC-style draft (`/v1/meter`, `/v1/admin/.../topup`).
 
 ### Added
+- Per-user **rate limiting** (`entitlements.rate_limit_per_min`): a charge is
+  rejected with `429 rate_limit_exceeded` once the user has recorded that many
+  events in the trailing 60 seconds. Counted in SQL over `metering_events`, so
+  it is correct across replicas with no extra state.
 - Per-user **periodic credit grant** in `entitlements.grant`: `reset` (monthly
   reset to amount, unused expire), `rollover` (monthly add amount up to an
   optional cap) or `rolling` (reset to amount every 30 days). Applied lazily on

@@ -39,6 +39,9 @@ type EventRepository interface {
 	Save(ctx context.Context, event domain.MeteringEvent) error
 	FindByUserAndDateRange(ctx context.Context, userID string, from, to time.Time, limit int) ([]domain.MeteringEvent, error)
 	SumCostByUserAndDateRange(ctx context.Context, userID string, from, to time.Time) (int64, error)
+	// CountByUserSince returns how many events the user recorded at or after
+	// the given time (used for rate limiting).
+	CountByUserSince(ctx context.Context, userID string, since time.Time) (int, error)
 }
 
 // Meterer performs an atomic balance deduction + event recording in a single transaction.

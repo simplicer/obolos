@@ -86,6 +86,14 @@ Grants are applied **lazily** on the next charge or balance read (no scheduler)
 and, via a row-locked check on the period anchor, **at most once per period**
 even under concurrent requests. The `anchor` is server-maintained.
 
+### 2.8 Rate Limiting
+
+A user may carry `entitlements.rate_limit_per_min`. A charge is rejected with
+`429 rate_limit_exceeded` once the user has recorded that many metering events
+in the trailing 60 seconds. The count is computed in SQL over
+`metering_events`, so the limit is consistent across service replicas without
+shared in-memory state.
+
 ## 3. Configuration
 
 ### 3.1 Sources

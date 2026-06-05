@@ -125,6 +125,16 @@ func (m *mockEventRepo) FindByUserAndDateRange(_ context.Context, userID string,
 	return result, nil
 }
 
+func (m *mockEventRepo) CountByUserSince(_ context.Context, userID string, since time.Time) (int, error) {
+	count := 0
+	for _, e := range m.events {
+		if e.UserID == userID && !e.CreatedAt.Before(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (m *mockEventRepo) SumCostByUserAndDateRange(_ context.Context, userID string, from, to time.Time) (int64, error) {
 	var sum int64
 	for _, e := range m.events {
@@ -390,6 +400,27 @@ func TestMeterUseCase_GrantAppliedBeforeCharge(t *testing.T) {
 	// Grant resets to 100, then the charge deducts 5 -> 95.
 	if res.Balance != 95 {
 		t.Errorf("got balance %d, want 95 (grant 100 then -5)", res.Balance)
+	}
+}
+
+func TestMeterUseCase_RateLimited(t *testing.T) {
+	users := newMockUserRepo()
+	events := newMockEventRepo()
+	users.Upsert(context.Background(), &domain.User{
+		ID: "user-1", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(100),
+		Entitlements: domain.Entitlements{RateLimitPerMin: 2},
+	})
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
+
+	// Two charges within the window are allowed.
+	for i := 0; i < 2; i++ {
+		if _, err := uc.Execute(context.Background(), MeterInput{UserID: "user-1", Cost: 1}); err != nil {
+			t.Fatalf("charge %d: unexpected error %v", i, err)
+		}
+	}
+	// The third exceeds the limit.
+	if _, err := uc.Execute(context.Background(), MeterInput{UserID: "user-1", Cost: 1}); err != ErrRateLimited {
+		t.Errorf("expected ErrRateLimited on the 3rd charge, got %v", err)
 	}
 }
 

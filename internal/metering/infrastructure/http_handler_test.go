@@ -105,6 +105,16 @@ func (s *inMemoryStore) FindByUserAndDateRange(_ context.Context, userID string,
 	return result, nil
 }
 
+func (s *inMemoryStore) CountByUserSince(_ context.Context, userID string, since time.Time) (int, error) {
+	count := 0
+	for _, e := range s.events {
+		if e.UserID == userID && !e.CreatedAt.Before(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (s *inMemoryStore) SumCostByUserAndDateRange(_ context.Context, userID string, from, to time.Time) (int64, error) {
 	var sum int64
 	for _, e := range s.events {

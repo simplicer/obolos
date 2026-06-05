@@ -15,6 +15,7 @@ var (
 	ErrInvalidAmount       = errors.New("invalid_amount")
 	ErrInvalidCost         = errors.New("invalid_cost")
 	ErrBlockedByWindow     = errors.New("blocked_by_window")
+	ErrRateLimited         = errors.New("rate_limit_exceeded")
 )
 
 // now returns the current UTC time. Extracted for testability.

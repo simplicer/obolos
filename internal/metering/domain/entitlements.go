@@ -97,6 +97,8 @@ func (g Grant) Applied(balance int64, t time.Time) (newBalance int64, newAnchor 
 type Entitlements struct {
 	Windows []TimeWindow `json:"windows,omitempty"`
 	Grant   Grant        `json:"grant,omitempty"`
+	// RateLimitPerMin caps charges per rolling 60s for the user (0 = unlimited).
+	RateLimitPerMin int `json:"rate_limit_per_min,omitempty"`
 }
 
 // WindowEffect returns the first matching window's action and factor at time t.
