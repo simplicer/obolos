@@ -306,6 +306,23 @@ func TestHandleGetUser(t *testing.T) {
 	}
 }
 
+func TestHandleGetUser_UnknownReturns404NoProvision(t *testing.T) {
+	store := newInMemoryStore()
+	handler := setupHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/ghost", nil)
+	req.SetPathValue("user_id", "ghost")
+	w := httptest.NewRecorder()
+	handler.HandleGetUser(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("unknown user GET: got %d, want 404", w.Code)
+	}
+	if _, exists := store.users["ghost"]; exists {
+		t.Error("GET must not provision a user")
+	}
+}
+
 func TestHandleAddCredits(t *testing.T) {
 	store := newInMemoryStore()
 	store.Upsert(context.Background(), &domain.User{

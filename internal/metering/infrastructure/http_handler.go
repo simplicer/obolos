@@ -189,16 +189,12 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleGetUser handles GET /v1/users/{user_id}
-// Owner sees their own info, admin sees any user.
+// Owner sees their own info, admin sees any user. A GET never creates state:
+// an unknown user returns 404 (users are provisioned only by a charge).
 func (h *Handler) HandleGetUser(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("user_id")
 	if !userIDPattern.MatchString(userID) {
 		writeProblem(w, http.StatusBadRequest, "invalid_user_id", "User ID format is invalid")
-		return
-	}
-
-	if err := h.ensureUser(r.Context(), userID); err != nil {
-		writeProblem(w, http.StatusInternalServerError, "internal_error", "Failed to provision user")
 		return
 	}
 
