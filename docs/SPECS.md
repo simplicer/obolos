@@ -130,77 +130,95 @@ Configuration can come from three sources, in priority order:
 
 ## 4. API Endpoints
 
-### 4.1 Meter Request (called by proxy)
+The surface is modelled RESTfully around two resources: **charges** and
+**users**. The full machine-readable contract is in
+[`docs/openapi.yaml`](./openapi.yaml). Every success uses a `{ "data": ... }`
+envelope; every error uses `application/problem+json` (RFC 7807 / RFC 9457).
+
+Authorization:
+- Public: `GET /health`, `GET /version`.
+- Proxy identity (`X-User-Id`): `POST /v1/charges`.
+- Owner (`X-User-Id` == `{user_id}`) or admin (`X-Admin-Key`):
+  `GET /v1/users/{user_id}`, `GET /v1/users/{user_id}/charges`.
+- Admin only (`X-Admin-Key`): `GET /v1/users`,
+  `POST /v1/users/{user_id}/credits`, `PUT /v1/users/{user_id}/plan`.
+
+### 4.1 Create Charge (called by proxy)
 
 ```
-POST /v1/meter
+POST /v1/charges
 Headers:
   X-User-Id: string (required, injected by proxy after IdP auth)
   X-Api: string (required, e.g. "vatguard")
-  X-Endpoint: string (required, e.g. "/v1/vies/ES00000000T")
+  X-Endpoint: string (required, e.g. "/v1/vies/{number}")
 
-Response 200:
+Response 201:
   { "data": { "cost": 5, "balance": 495, "plan_type": "prepaid" } }
 
-Response 402:
+Response 402 (application/problem+json):
   { "data": { "cost": 5, "balance": 0, "plan_type": "prepaid" },
-    "error": "insufficient_credits" }
+    "error": { "title": "insufficient_credits", "status": 402 } }
 ```
 
-### 4.2 Get Balance
+The user is auto-provisioned with the default plan on its first charge.
+
+### 4.2 Get User Balance
 
 ```
-GET /v1/balance
-Headers: X-User-Id (injected by proxy)
+GET /v1/users/{user_id}
+Headers: X-User-Id (owner) or X-Admin-Key (admin)
 
 Response 200:
   { "data": { "user_id": "...", "balance": 495, "plan_type": "prepaid", "total_usage_this_month": 505 } }
 ```
 
-### 4.3 Get Usage
+### 4.3 Get User Charges
 
 ```
-GET /v1/usage?from=2025-06-01&to=2025-06-30
-Headers: X-User-Id
+GET /v1/users/{user_id}/charges?from=2025-06-01&to=2025-06-30
+Headers: X-User-Id (owner) or X-Admin-Key (admin)
 
 Response 200:
-  { "data": { "events": [...], "total_cost": 505, "total_requests": 150 } }
+  { "data": { "events": [...], "total_cost": 505, "overage_cost": 0 } }
 ```
 
-### 4.4 Admin: Top Up Credits
+### 4.4 List Users (admin)
 
 ```
-POST /v1/admin/users/{user_id}/topup
+GET /v1/users
+Headers: X-Admin-Key
+
+Response 200:
+  { "data": { "users": [ { "user_id": "...", "plan_type": "prepaid", "balance": 495, "created_at": "..." } ], "total": 1 } }
+```
+
+### 4.5 Add Credits (admin)
+
+```
+POST /v1/users/{user_id}/credits
+Headers: X-Admin-Key
 Body: { "amount": 5000 }
 
-Response 200:
+Response 201:
   { "data": { "user_id": "...", "balance": 5495 } }
 ```
 
-### 4.5 Admin: Set Plan
+### 4.6 Set Plan (admin)
 
 ```
-POST /v1/admin/users/{user_id}/plan
+PUT /v1/users/{user_id}/plan
+Headers: X-Admin-Key
 Body: { "plan_type": "hybrid", "credits": 10000, "overage_rate": 0.01 }
 
 Response 200:
   { "data": { "user_id": "...", "plan_type": "hybrid", "credits": 10000 } }
 ```
 
-### 4.6 Admin: Get User Usage
-
-```
-GET /v1/admin/users/{user_id}/usage?from=2025-06-01&to=2025-06-30
-
-Response 200:
-  { "data": { "events": [...], "total_cost": 505, "overage_cost": 0 } }
-```
-
 ### 4.7 Health & Version
 
 ```
 GET /health → { "data": { "status": "ok" } }
-GET /version → { "data": { "version": "0.1.0" } }
+GET /version → { "data": { "version": "0.6.2-unstable" } }
 ```
 
 ## 5. Database Schema

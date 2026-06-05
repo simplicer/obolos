@@ -156,11 +156,15 @@ Pricing is defined per API and per endpoint in `pricing.json`:
 
 ## API Surface
 
-- `POST /v1/meter` — Meter a request (called by reverse proxy as forwardAuth)
-- `GET /v1/balance` — Get current balance for authenticated user
-- `GET /v1/usage` — Get usage history for authenticated user
+- `POST /v1/charges` — Meter a request (called by reverse proxy as forwardAuth)
+- `GET /v1/users/{user_id}` — Get current balance (owner or admin)
+- `GET /v1/users/{user_id}/charges` — Get usage history (owner or admin)
+- `GET /v1/users` — List users (admin)
+- `POST /v1/users/{user_id}/credits` — Add credits to a user (admin)
+- `PUT /v1/users/{user_id}/plan` — Set plan for a user (admin)
 - `GET /health` — Health check
 - `GET /version` — Version info
-- `POST /v1/admin/users/{user_id}/topup` — Add credits to a user (admin)
-- `GET /v1/admin/users/{user_id}/usage` — Get usage for a user (admin)
-- `POST /v1/admin/users/{user_id}/plan` — Set plan for a user (admin)
+
+The canonical, machine-readable contract is `docs/openapi.yaml`. Keep it in
+sync with the router on every endpoint change (its `info.version` must equal
+the `VERSION` file).

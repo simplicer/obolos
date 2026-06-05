@@ -67,16 +67,18 @@ cp etc/pricing.example.json etc/pricing.json
 
 ## API
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /v1/meter` | Meter a request (proxy calls this) |
-| `GET /v1/balance` | Get user balance |
-| `GET /v1/usage` | Get usage history |
-| `GET /health` | Health check |
-| `GET /version` | Version info |
-| `POST /v1/admin/users/{id}/topup` | Add credits (admin) |
-| `POST /v1/admin/users/{id}/plan` | Set plan (admin) |
-| `GET /v1/admin/users/{id}/usage` | Get usage (admin) |
+Full contract: [`docs/openapi.yaml`](docs/openapi.yaml) · spec: [`docs/SPECS.md`](docs/SPECS.md)
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `POST /v1/charges` | proxy `X-User-Id` | Meter a request (proxy calls this) |
+| `GET /v1/users/{id}` | owner or admin | Get user balance |
+| `GET /v1/users/{id}/charges` | owner or admin | Get usage history |
+| `GET /v1/users` | admin | List users |
+| `POST /v1/users/{id}/credits` | admin | Add credits |
+| `PUT /v1/users/{id}/plan` | admin | Set plan |
+| `GET /health` | public | Health check |
+| `GET /version` | public | Version info |
 
 ## License
 

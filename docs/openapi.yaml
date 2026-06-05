@@ -1,0 +1,447 @@
+openapi: 3.1.0
+info:
+  title: Metering API
+  description: >-
+    Credit-based billing engine for an API platform. Called by a reverse
+    proxy (Traefik / Caddy / KrakenD) via `forwardAuth` on every request.
+    Identity is NOT managed here: the proxy authenticates the caller against
+    the IdP and injects the `X-User-Id` header, which this service trusts.
+
+    All successful responses use a `{ "data": ... }` envelope. All errors use
+    RFC 7807 / RFC 9457 `application/problem+json`.
+  version: 0.6.2-unstable
+  license:
+    name: GNU AGPL v3
+    url: https://www.gnu.org/licenses/agpl-3.0.txt
+  contact:
+    name: Simplicer
+    url: https://codeberg.org/simplicer/metering
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: charges
+    description: Metering a request (called by the reverse proxy)
+  - name: users
+    description: User balance, charges, credits and plan
+  - name: well-known
+    description: Health and version probes
+
+paths:
+  /health:
+    get:
+      tags: [well-known]
+      summary: Liveness probe
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, const: ok }
+
+  /version:
+    get:
+      tags: [well-known]
+      summary: Build version
+      operationId: getVersion
+      security: []
+      responses:
+        "200":
+          description: Current service version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      version: { type: string, example: 0.6.2-unstable }
+
+  /v1/charges:
+    post:
+      tags: [charges]
+      summary: Create a charge (meter a request)
+      description: >-
+        Called by the reverse proxy as `forwardAuth` on every API request.
+        Resolves the cost for `X-Api` + `X-Endpoint`, applies the user's plan
+        rules, deducts the balance and records a metering event. The user is
+        auto-provisioned with the default plan on first sight.
+      operationId: createCharge
+      parameters:
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XApi"
+        - $ref: "#/components/parameters/XEndpoint"
+      responses:
+        "201":
+          description: Charge created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/MeterResult" }
+        "400":
+          $ref: "#/components/responses/MissingHeaders"
+        "402":
+          description: >-
+            Insufficient credits (prepaid plan, balance is zero). The body
+            carries both the `data` snapshot and an `error` object.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/MeterResult" }
+                  error: { $ref: "#/components/schemas/Problem" }
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/users:
+    get:
+      tags: [users]
+      summary: List users (admin only)
+      operationId: listUsers
+      security:
+        - adminKey: []
+      responses:
+        "200":
+          description: User summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/ListUsersResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/users/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/UserIdPath"
+    get:
+      tags: [users]
+      summary: Get a user's balance
+      description: >-
+        Returns the balance, plan and month-to-date usage for a user. The
+        owner (matching `X-User-Id`) or an admin (`X-Admin-Key`) may read it.
+        The user is auto-provisioned if it does not yet exist.
+      operationId: getUser
+      parameters:
+        - $ref: "#/components/parameters/XUserIdOptional"
+      responses:
+        "200":
+          description: User balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/BalanceResult" }
+        "400":
+          $ref: "#/components/responses/InvalidUserId"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/users/{user_id}/charges:
+    parameters:
+      - $ref: "#/components/parameters/UserIdPath"
+    get:
+      tags: [users]
+      summary: Get a user's charges
+      description: >-
+        Returns the metering events and aggregate costs for a user in a date
+        range. Owner or admin. Dates default to the current month.
+      operationId: getUserCharges
+      parameters:
+        - $ref: "#/components/parameters/XUserIdOptional"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: User charges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/AdminUsageResult" }
+        "400":
+          $ref: "#/components/responses/InvalidUserId"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/users/{user_id}/credits:
+    parameters:
+      - $ref: "#/components/parameters/UserIdPath"
+    post:
+      tags: [users]
+      summary: Add credits to a user (admin only)
+      operationId: addCredits
+      security:
+        - adminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  description: Credits to add (must be positive)
+      responses:
+        "201":
+          description: Credits added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/TopUpResult" }
+        "400":
+          description: Invalid body or non-positive amount
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/users/{user_id}/plan:
+    parameters:
+      - $ref: "#/components/parameters/UserIdPath"
+    put:
+      tags: [users]
+      summary: Set a user's plan (admin only)
+      operationId: putPlan
+      security:
+        - adminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_type]
+              properties:
+                plan_type:
+                  type: string
+                  enum: [prepaid, unlimited, hybrid]
+                credits:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                overage_rate:
+                  type: number
+                  format: double
+                  minimum: 0
+                  description: Per-unit overage rate (hybrid plans)
+      responses:
+        "200":
+          description: Plan updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SetPlanResult" }
+        "400":
+          description: Invalid body or unknown plan type
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    proxyIdentity:
+      type: apiKey
+      in: header
+      name: X-User-Id
+      description: Opaque user identity injected by the trusted reverse proxy.
+    adminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+      description: Shared admin key required for administrative routes.
+
+  parameters:
+    XUserId:
+      name: X-User-Id
+      in: header
+      required: true
+      schema: { type: string, maxLength: 255 }
+      description: Caller identity injected by the reverse proxy.
+    XUserIdOptional:
+      name: X-User-Id
+      in: header
+      required: false
+      schema: { type: string, maxLength: 255 }
+      description: Caller identity; required unless a valid admin key is sent.
+    XApi:
+      name: X-Api
+      in: header
+      required: true
+      schema: { type: string, example: vatguard }
+      description: Logical API being called.
+    XEndpoint:
+      name: X-Endpoint
+      in: header
+      required: true
+      schema: { type: string, example: "/v1/vies/{number}" }
+      description: Endpoint pattern being called.
+    UserIdPath:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-zA-Z0-9._-]{1,255}$"
+    From:
+      name: from
+      in: query
+      required: false
+      schema: { type: string, format: date }
+      description: Inclusive start date (YYYY-MM-DD). Defaults to month start.
+    To:
+      name: to
+      in: query
+      required: false
+      schema: { type: string, format: date }
+      description: Inclusive end date (YYYY-MM-DD). Defaults to now.
+
+  responses:
+    MissingHeaders:
+      description: A required header (X-User-Id / X-Api / X-Endpoint) is missing
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    InvalidUserId:
+      description: The user_id path value is malformed
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Admin access required and not provided
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: Caller may only access their own user resource
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    UserNotFound:
+      description: No such user
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    InternalError:
+      description: Unexpected server or database error
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 7807 / RFC 9457 problem details
+      required: [title, status]
+      properties:
+        type: { type: string }
+        title: { type: string, example: insufficient_credits }
+        status: { type: integer, example: 402 }
+        detail: { type: string }
+        instance: { type: string }
+    MeterResult:
+      type: object
+      properties:
+        cost: { type: integer, format: int64 }
+        balance: { type: integer, format: int64 }
+        plan_type: { type: string, enum: [prepaid, unlimited, hybrid] }
+    BalanceResult:
+      type: object
+      properties:
+        user_id: { type: string }
+        balance: { type: integer, format: int64 }
+        plan_type: { type: string, enum: [prepaid, unlimited, hybrid] }
+        total_usage_this_month: { type: integer, format: int64 }
+    TopUpResult:
+      type: object
+      properties:
+        user_id: { type: string }
+        balance: { type: integer, format: int64 }
+    SetPlanResult:
+      type: object
+      properties:
+        user_id: { type: string }
+        plan_type: { type: string, enum: [prepaid, unlimited, hybrid] }
+        credits: { type: integer, format: int64 }
+    AdminUsageResult:
+      type: object
+      properties:
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/MeteringEvent" }
+        total_cost: { type: integer, format: int64 }
+        overage_cost: { type: integer, format: int64 }
+    ListUsersResult:
+      type: object
+      properties:
+        users:
+          type: array
+          items: { $ref: "#/components/schemas/UserSummary" }
+        total: { type: integer }
+    UserSummary:
+      type: object
+      properties:
+        user_id: { type: string }
+        plan_type: { type: string, enum: [prepaid, unlimited, hybrid] }
+        balance: { type: integer, format: int64 }
+        created_at: { type: string }
+    MeteringEvent:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        api: { type: string }
+        endpoint: { type: string }
+        base_cost: { type: integer, format: int64 }
+        applied_multiplier: { type: number, format: double }
+        final_cost: { type: integer, format: int64 }
+        balance_before: { type: integer, format: int64 }
+        balance_after: { type: integer, format: int64 }
+        plan_type: { type: string }
+        overage: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+security:
+  - proxyIdentity: []

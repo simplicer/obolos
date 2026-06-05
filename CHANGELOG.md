@@ -11,6 +11,13 @@ release will be `1.0.0`.
 
 ## [Unreleased]
 
+### Changed
+- Relocated `SPECS.md` to `docs/SPECS.md` and added the OpenAPI 3.1 contract
+  at `docs/openapi.yaml`. Reconciled `SPECS.md`, `AGENTS.md` and `README.md`
+  with the implemented RESTful surface (`POST /v1/charges`,
+  `/v1/users/{id}` resources) which had drifted from the original
+  RPC-style draft (`/v1/meter`, `/v1/admin/.../topup`).
+
 ### Added
 - Project foundation: `go.mod`, `Makefile`, `LICENSE` (AGPL v3), `README.md`,
   `AGENTS.md`, directory layout (`cmd/`, `internal/`, `etc/`, `infra/`,
