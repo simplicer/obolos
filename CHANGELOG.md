@@ -15,5 +15,8 @@ release will be `1.0.0`.
 - Project foundation: `go.mod`, `Makefile`, `LICENSE` (AGPL v3), `README.md`,
   `AGENTS.md`, directory layout (`cmd/`, `internal/`, `etc/`, `infra/`,
   `migrations/`, `var/log/`).
+- Domain layer (`internal/metering/domain`): `Balance` value object
+  (signed-integer credits), `Plan` (prepaid / unlimited / hybrid),
+  `PricingRule` with time modifiers, `MeteringEvent` entity, `User` aggregate.
 
 [Unreleased]: https://codeberg.org/simplicer/metering/compare/main
