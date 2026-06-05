@@ -9,7 +9,7 @@ info:
 
     All successful responses use a `{ "data": ... }` envelope. All errors use
     RFC 7807 / RFC 9457 `application/problem+json`.
-  version: 0.10.0-unstable
+  version: 0.11.0-unstable
   license:
     name: GNU AGPL v3
     url: https://www.gnu.org/licenses/agpl-3.0.txt
@@ -66,7 +66,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      version: { type: string, example: 0.10.0-unstable }
+                      version: { type: string, example: 0.11.0-unstable }
 
   /v1/charges:
     post:
@@ -82,6 +82,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/XUserId"
         - $ref: "#/components/parameters/XCost"
+        - $ref: "#/components/parameters/XRequestId"
         - $ref: "#/components/parameters/XApi"
         - $ref: "#/components/parameters/XEndpoint"
       responses:
@@ -328,6 +329,14 @@ components:
       required: true
       schema: { type: integer, format: int64, minimum: 0, example: 5 }
       description: Cost in credits, reported by the trusted caller.
+    XRequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema: { type: string, maxLength: 255 }
+      description: >-
+        Optional idempotency key. A retry with the same (X-User-Id, X-Request-Id)
+        replays the prior result without charging again.
     XApi:
       name: X-Api
       in: header

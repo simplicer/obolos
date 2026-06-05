@@ -48,7 +48,10 @@ type EventRepository interface {
 // This prevents race conditions and ensures financial consistency. The cost (in
 // credits) is supplied by the trusted caller; this service does not price requests.
 type Meterer interface {
-	MeterAtomic(ctx context.Context, userID, api, endpoint string, cost int64) (*MeterResult, error)
+	// MeterAtomic deducts cost and records the event atomically. If requestID is
+	// non-empty and a charge with the same (userID, requestID) already exists,
+	// it replays the prior result without charging again (idempotency).
+	MeterAtomic(ctx context.Context, userID, api, endpoint, requestID string, cost int64) (*MeterResult, error)
 }
 
 // MeterResult is the outcome of a metering request.

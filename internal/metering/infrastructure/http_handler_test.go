@@ -125,7 +125,14 @@ func (s *inMemoryStore) SumCostByUserAndDateRange(_ context.Context, userID stri
 	return sum, nil
 }
 
-func (s *inMemoryStore) MeterAtomic(_ context.Context, userID, api, endpoint string, cost int64) (*application.MeterResult, error) {
+func (s *inMemoryStore) MeterAtomic(_ context.Context, userID, api, endpoint, requestID string, cost int64) (*application.MeterResult, error) {
+	if requestID != "" {
+		for _, e := range s.events {
+			if e.UserID == userID && e.RequestID == requestID {
+				return &application.MeterResult{Cost: e.FinalCost, Balance: e.BalanceAfter, PlanType: e.PlanType}, nil
+			}
+		}
+	}
 	user := s.users[userID]
 	if user == nil {
 		return nil, application.ErrUserNotFound
@@ -142,12 +149,14 @@ func (s *inMemoryStore) MeterAtomic(_ context.Context, userID, api, endpoint str
 	user.Balance = newBalance
 	s.users[userID] = user
 
-	s.events = append(s.events, domain.NewMeteringEvent(
+	ev := domain.NewMeteringEvent(
 		"test-id", userID, api, endpoint,
 		cost, 1.0, cost,
 		balanceBefore, newBalance.Value(),
 		plan.String(), overage,
-	))
+	)
+	ev.RequestID = requestID
+	s.events = append(s.events, ev)
 
 	return &application.MeterResult{Cost: cost, Balance: newBalance.Value(), PlanType: plan.String()}, nil
 }

@@ -273,22 +273,34 @@ func unmarshalEntitlements(data []byte, e *domain.Entitlements) error {
 
 // --- EventRepository ---
 
-// Save persists a metering event.
+// Save persists a metering event. A retry carrying the same (user_id,
+// request_id) is a no-op (ON CONFLICT DO NOTHING), so free/zero-cost charges
+// are idempotent too.
 func (s *PostgresStore) Save(ctx context.Context, event domain.MeteringEvent) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO metering_events
 		 (id, user_id, api, endpoint, base_cost, applied_multiplier, final_cost,
-		  balance_before, balance_after, plan_type, overage, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		  balance_before, balance_after, plan_type, overage, request_id, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		 ON CONFLICT (user_id, request_id) DO NOTHING`,
 		event.ID, event.UserID, event.API, event.Endpoint,
 		event.BaseCost, event.AppliedMultiplier, event.FinalCost,
 		event.BalanceBefore, event.BalanceAfter, event.PlanType,
-		event.Overage, event.CreatedAt,
+		event.Overage, nullableRequestID(event.RequestID), event.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("insert event: %w", err)
 	}
 	return nil
+}
+
+// nullableRequestID returns nil for an empty id so it stores SQL NULL (NULLs are
+// distinct in the unique index, so unkeyed charges are never deduplicated).
+func nullableRequestID(id string) interface{} {
+	if id == "" {
+		return nil
+	}
+	return id
 }
 
 // FindByUserAndDateRange finds events for a user in a date range with pagination.
@@ -364,7 +376,7 @@ func (s *PostgresStore) CountByUserSince(ctx context.Context, userID string, sin
 // MeterAtomic performs balance deduction and event recording in a single DB transaction.
 // It uses SELECT FOR UPDATE to prevent race conditions (double-spend). The cost is
 // the credit amount reported by the trusted caller.
-func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint string, cost int64) (*application.MeterResult, error) {
+func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint, requestID string, cost int64) (*application.MeterResult, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -384,6 +396,24 @@ func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint s
 
 	if err != nil {
 		return nil, fmt.Errorf("lock user for update: %w", err)
+	}
+
+	// Idempotency: under the user row lock, if this request was already charged
+	// replay its result without deducting again. The lock serialises concurrent
+	// retries for the same user.
+	if requestID != "" {
+		var fc, ba int64
+		var pt string
+		e := tx.QueryRow(ctx,
+			`SELECT final_cost, balance_after, plan_type FROM metering_events WHERE user_id = $1 AND request_id = $2`,
+			userID, requestID,
+		).Scan(&fc, &ba, &pt)
+		if e == nil {
+			return &application.MeterResult{Cost: fc, Balance: ba, PlanType: pt}, nil
+		}
+		if e != pgx.ErrNoRows {
+			return nil, fmt.Errorf("idempotency lookup: %w", e)
+		}
 	}
 
 	pt, err := domain.ParsePlanType(planType)
@@ -420,12 +450,12 @@ func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint s
 	_, err = tx.Exec(ctx,
 		`INSERT INTO metering_events
 		 (id, user_id, api, endpoint, base_cost, applied_multiplier, final_cost,
-		  balance_before, balance_after, plan_type, overage, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+		  balance_before, balance_after, plan_type, overage, request_id, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
 		eventID, userID, api, endpoint,
 		cost, 1.0, cost,
 		balanceBefore, balanceAfter, planType,
-		overage,
+		overage, nullableRequestID(requestID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert event: %w", err)

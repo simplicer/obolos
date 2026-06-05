@@ -117,10 +117,11 @@ func (h *Handler) HandleCreateCharge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.meter.Execute(r.Context(), application.MeterInput{
-		UserID:   userID,
-		API:      api,
-		Endpoint: endpoint,
-		Cost:     cost,
+		UserID:    userID,
+		API:       api,
+		Endpoint:  endpoint,
+		Cost:      cost,
+		RequestID: r.Header.Get("X-Request-Id"),
 	})
 
 	if err != nil {

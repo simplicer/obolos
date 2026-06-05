@@ -17,6 +17,7 @@ type MeteringEvent struct {
 	BalanceAfter      int64     `json:"balance_after"`
 	PlanType          string    `json:"plan_type"`
 	Overage           bool      `json:"overage"`
+	RequestID         string    `json:"request_id,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 }
 

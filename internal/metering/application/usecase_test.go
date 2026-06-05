@@ -156,9 +156,17 @@ func newMockMeterer(users *mockUserRepo, events *mockEventRepo) *mockMeterer {
 	return &mockMeterer{users: users, events: events}
 }
 
-func (m *mockMeterer) MeterAtomic(ctx context.Context, userID, api, endpoint string, cost int64) (*MeterResult, error) {
+func (m *mockMeterer) MeterAtomic(ctx context.Context, userID, api, endpoint, requestID string, cost int64) (*MeterResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if requestID != "" {
+		for _, e := range m.events.events {
+			if e.UserID == userID && e.RequestID == requestID {
+				return &MeterResult{Cost: e.FinalCost, Balance: e.BalanceAfter, PlanType: e.PlanType}, nil
+			}
+		}
+	}
 
 	user, err := m.users.FindByID(ctx, userID)
 	if err != nil || user == nil {
@@ -183,6 +191,7 @@ func (m *mockMeterer) MeterAtomic(ctx context.Context, userID, api, endpoint str
 		balanceBefore, newBalance.Value(),
 		plan.String(), overage,
 	)
+	event.RequestID = requestID
 	m.events.Save(ctx, event)
 
 	return &MeterResult{Cost: cost, Balance: newBalance.Value(), PlanType: plan.String()}, nil
@@ -421,6 +430,32 @@ func TestMeterUseCase_RateLimited(t *testing.T) {
 	// The third exceeds the limit.
 	if _, err := uc.Execute(context.Background(), MeterInput{UserID: "user-1", Cost: 1}); err != ErrRateLimited {
 		t.Errorf("expected ErrRateLimited on the 3rd charge, got %v", err)
+	}
+}
+
+func TestMeterUseCase_IdempotentByRequestID(t *testing.T) {
+	users := newMockUserRepo()
+	events := newMockEventRepo()
+	users.Upsert(context.Background(), &domain.User{
+		ID: "user-1", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(100),
+	})
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
+
+	in := MeterInput{UserID: "user-1", Cost: 5, RequestID: "req-1"}
+	r1, err := uc.Execute(context.Background(), in)
+	if err != nil {
+		t.Fatalf("first charge: %v", err)
+	}
+	// A retry with the same request id must not charge again.
+	r2, err := uc.Execute(context.Background(), in)
+	if err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if r1.Balance != 95 || r2.Balance != 95 {
+		t.Errorf("idempotency: got %d then %d, want 95/95", r1.Balance, r2.Balance)
+	}
+	if len(events.events) != 1 {
+		t.Errorf("expected 1 event recorded, got %d", len(events.events))
 	}
 }
 

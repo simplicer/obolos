@@ -146,7 +146,8 @@ validates `cost ≥ 0` and enforces the plan's credit rules against it.
 
 ## API Surface
 
-- `POST /v1/charges` — Meter a request (called by reverse proxy as forwardAuth)
+- `POST /v1/charges` — Meter a request (called by reverse proxy as forwardAuth);
+  cost in `X-Cost`, optional idempotency key `X-Request-Id`
 - `GET /v1/users/{user_id}` — Get current balance (owner or admin)
 - `GET /v1/users/{user_id}/charges` — Get usage history (owner or admin)
 - `GET /v1/users` — List users (admin)

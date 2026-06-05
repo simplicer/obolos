@@ -37,6 +37,10 @@ release will be `1.0.0`.
   RPC-style draft (`/v1/meter`, `/v1/admin/.../topup`).
 
 ### Added
+- **Idempotent charges** via an optional `X-Request-Id` header (migration `003`,
+  unique `(user_id, request_id)`). A retry with the same key replays the prior
+  result without charging again — safe under `forwardAuth` retries. Enforced
+  under the user row lock, so concurrent duplicates deduct exactly once.
 - Per-user **rate limiting** (`entitlements.rate_limit_per_min`): a charge is
   rejected with `429 rate_limit_exceeded` once the user has recorded that many
   events in the trailing 60 seconds. Counted in SQL over `metering_events`, so

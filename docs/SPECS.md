@@ -143,10 +143,11 @@ Authorization:
 ```
 POST /v1/charges
 Headers:
-  X-User-Id: string (required, injected by proxy after IdP auth)
-  X-Cost:    integer credits (required, reported by the caller)
-  X-Api:     string (optional metadata, e.g. "vatguard")
-  X-Endpoint: string (optional metadata, e.g. "/v1/vies/{number}")
+  X-User-Id:   string (required, injected by proxy after IdP auth)
+  X-Cost:      integer credits (required, reported by the caller)
+  X-Request-Id: string (optional idempotency key; retry replays prior result)
+  X-Api:       string (optional metadata, e.g. "vatguard")
+  X-Endpoint:  string (optional metadata, e.g. "/v1/vies/{number}")
 
 Response 201:
   { "data": { "cost": 5, "balance": 495, "plan_type": "prepaid" } }
@@ -214,7 +215,7 @@ Response 200:
 
 ```
 GET /health → { "data": { "status": "ok" } }
-GET /version → { "data": { "version": "0.7.0-unstable" } }
+GET /version → { "data": { "version": "0.11.0-unstable" } }
 ```
 
 ## 5. Database Schema

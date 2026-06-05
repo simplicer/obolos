@@ -26,10 +26,11 @@ func NewMeterUseCase(users UserRepository, events EventRepository, meterer Meter
 // cost reported by the caller; API and Endpoint are optional metadata recorded
 // on the event for analytics.
 type MeterInput struct {
-	UserID   string
-	API      string
-	Endpoint string
-	Cost     int64
+	UserID    string
+	API       string
+	Endpoint  string
+	Cost      int64
+	RequestID string // optional idempotency key (X-Request-Id)
 }
 
 // Execute meters a request: validates the reported cost, checks the plan's
@@ -99,6 +100,7 @@ func (uc *MeterUseCase) Execute(ctx context.Context, input MeterInput) (*MeterRe
 			user.Balance.Value(), user.Balance.Value(),
 			plan.String(), false,
 		)
+		event.RequestID = input.RequestID
 		if err := uc.events.Save(ctx, event); err != nil {
 			return nil, fmt.Errorf("event save failed: %w", err)
 		}
@@ -115,7 +117,7 @@ func (uc *MeterUseCase) Execute(ctx context.Context, input MeterInput) (*MeterRe
 		}, ErrInsufficientCredits
 	}
 
-	result, err := uc.meterer.MeterAtomic(ctx, input.UserID, input.API, input.Endpoint, input.Cost)
+	result, err := uc.meterer.MeterAtomic(ctx, input.UserID, input.API, input.Endpoint, input.RequestID, input.Cost)
 	if err != nil {
 		if err == ErrInsufficientCredits {
 			return &MeterResult{

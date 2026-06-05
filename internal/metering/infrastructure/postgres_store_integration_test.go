@@ -321,6 +321,43 @@ func TestIntegration_GrantAppliedOncePerPeriod(t *testing.T) {
 	}
 }
 
+func TestIntegration_MeterAtomicIdempotent(t *testing.T) {
+	store, ctx := newTestStore(t)
+
+	u := domain.NewUser("ivan", domain.Plan{Type: domain.PlanTypePrepaid}, 100)
+	if err := store.Upsert(ctx, &u); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Same request id charged many times concurrently must deduct exactly once.
+	const n = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := store.MeterAtomic(ctx, "ivan", "vatguard", "/v1/x", "req-42", 10); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("idempotent meter: %v", err)
+	}
+
+	got, _ := store.FindByID(ctx, "ivan")
+	if got.Balance.Value() != 90 {
+		t.Errorf("balance = %d, want 90 (charged once despite %d retries)", got.Balance.Value(), n)
+	}
+	events, _ := store.FindByUserAndDateRange(ctx, "ivan", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 0)
+	if len(events) != 1 {
+		t.Errorf("expected 1 event, got %d", len(events))
+	}
+}
+
 func TestIntegration_MeterAtomic(t *testing.T) {
 	store, ctx := newTestStore(t)
 
@@ -330,7 +367,7 @@ func TestIntegration_MeterAtomic(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	res, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 4)
+	res, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", "", 4)
 	if err != nil {
 		t.Fatalf("meter: %v", err)
 	}
@@ -346,10 +383,10 @@ func TestIntegration_MeterAtomic(t *testing.T) {
 
 	// Drain the balance, then a charge that exceeds it must be rejected and
 	// must not change the balance.
-	if _, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 6); err != nil {
+	if _, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", "", 6); err != nil {
 		t.Fatalf("second meter: %v", err)
 	}
-	rejected, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 1)
+	rejected, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", "", 1)
 	if err == nil {
 		t.Fatal("expected insufficient-credits error, got nil")
 	}
