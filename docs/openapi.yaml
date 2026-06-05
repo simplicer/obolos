@@ -9,7 +9,7 @@ info:
 
     All successful responses use a `{ "data": ... }` envelope. All errors use
     RFC 7807 / RFC 9457 `application/problem+json`.
-  version: 0.6.3-unstable
+  version: 0.7.0-unstable
   license:
     name: GNU AGPL v3
     url: https://www.gnu.org/licenses/agpl-3.0.txt
@@ -66,7 +66,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      version: { type: string, example: 0.6.3-unstable }
+                      version: { type: string, example: 0.7.0-unstable }
 
   /v1/charges:
     post:
@@ -74,12 +74,14 @@ paths:
       summary: Create a charge (meter a request)
       description: >-
         Called by the reverse proxy as `forwardAuth` on every API request.
-        Resolves the cost for `X-Api` + `X-Endpoint`, applies the user's plan
-        rules, deducts the balance and records a metering event. The user is
-        auto-provisioned with the default plan on first sight.
+        The caller reports the cost in credits via `X-Cost`; this service does
+        not price requests. Applies the user's plan rules, deducts the balance
+        and records a metering event. The user is auto-provisioned with the
+        default plan on first sight. `X-Api`/`X-Endpoint` are optional metadata.
       operationId: createCharge
       parameters:
         - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XCost"
         - $ref: "#/components/parameters/XApi"
         - $ref: "#/components/parameters/XEndpoint"
       responses:
@@ -306,18 +308,24 @@ components:
       required: false
       schema: { type: string, maxLength: 255 }
       description: Caller identity; required unless a valid admin key is sent.
+    XCost:
+      name: X-Cost
+      in: header
+      required: true
+      schema: { type: integer, format: int64, minimum: 0, example: 5 }
+      description: Cost in credits, reported by the trusted caller.
     XApi:
       name: X-Api
       in: header
-      required: true
+      required: false
       schema: { type: string, example: vatguard }
-      description: Logical API being called.
+      description: Logical API being called (optional metadata for the event).
     XEndpoint:
       name: X-Endpoint
       in: header
-      required: true
+      required: false
       schema: { type: string, example: "/v1/vies/{number}" }
-      description: Endpoint pattern being called.
+      description: Endpoint pattern being called (optional metadata for the event).
     UserIdPath:
       name: user_id
       in: path
@@ -340,7 +348,7 @@ components:
 
   responses:
     MissingHeaders:
-      description: A required header (X-User-Id / X-Api / X-Endpoint) is missing
+      description: A required header (X-User-Id / X-Cost) is missing or invalid
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }

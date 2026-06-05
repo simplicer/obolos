@@ -14,3 +14,4 @@ resulting *rules*.
 | [0005](0005-layered-json-configuration.md) | Layered JSON configuration sources | Accepted |
 | [0006](0006-restful-resource-api.md) | RESTful resource API over RPC endpoints | Accepted |
 | [0007](0007-vendor-neutral-infra-naming.md) | Vendor-neutral naming for container and deploy artifacts | Accepted |
+| [0008](0008-cost-supplied-by-caller.md) | Cost is supplied by the caller, not priced here | Accepted |

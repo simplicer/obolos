@@ -27,13 +27,15 @@ Every user has a credit balance. The balance is a signed integer:
 | **Unlimited** | Always 0, never changes | Requests pass, no deduction | Impossible |
 | **Hybrid** | Starts positive, can go negative | Switches to overage rate | Requests pass, balance tracks debt |
 
-### 2.4 Pricing
+### 2.4 Cost (reported by the caller)
 
-Pricing is defined per API and per endpoint in a JSON configuration file. Each endpoint has:
-- `base_cost`: credits consumed per request
-- `time_modifiers` (optional): multiplier applied during specific hours/days
+This service does **not** price requests. The trusted caller (the reverse
+proxy / middleware that fronts each API and already knows the price) reports
+the cost in credits via the `X-Cost` header on each charge. Metering only
+enforces the client's credit and entitlement rules against that cost.
 
-Time modifiers are evaluated in order. First match wins. If no modifier matches, `base_cost` is used as-is.
+`X-Cost` must be a non-negative integer; a missing or invalid value is
+rejected with `400`. See ADR 0008.
 
 ### 2.5 Metering Event
 
@@ -62,59 +64,14 @@ MeteringEvent {
 
 Configuration can come from three sources, in priority order:
 
-1. **Remote HTTP endpoint**: `CONFIG_REMOTE_URL` env var. The service fetches JSON from this URL on a configurable interval (default: 60s). If the fetch fails, it falls back to cached/local config.
-2. **Local JSON file**: `etc/pricing.json` for pricing, `etc/config.json` for service config. Reloaded on SIGHUP.
+1. **Remote HTTP endpoint**: `CONFIG_REMOTE_URL` env var. The service fetches service config JSON from this URL on a configurable interval (default: 60s). If the fetch fails, it falls back to cached/local config.
+2. **Local JSON file**: `etc/config.json` for service config. Reloaded on SIGHUP.
 3. **Environment variables**: Override specific values (PORT, LOG_LEVEL, DATABASE_URL, etc.).
 
-### 3.2 Pricing Config Schema
+There is no pricing configuration: cost is reported per request by the caller
+(§2.4, ADR 0008).
 
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "required": ["apis"],
-  "properties": {
-    "apis": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "required": ["endpoints"],
-        "properties": {
-          "endpoints": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "object",
-              "required": ["base_cost"],
-              "properties": {
-                "base_cost": { "type": "integer", "minimum": 0 },
-                "time_modifiers": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "required": ["hours", "multiplier"],
-                    "properties": {
-                      "hours": { "type": "string", "description": "e.g. '09:00-17:00'" },
-                      "days": {
-                        "type": "array",
-                        "items": { "type": "string", "enum": ["mon","tue","wed","thu","fri","sat","sun"] }
-                      },
-                      "multiplier": { "type": "number", "minimum": 0 }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default_cost": { "type": "integer", "minimum": 0 }
-        }
-      }
-    },
-    "default_cost": { "type": "integer", "minimum": 0, "default": 1 }
-  }
-}
-```
-
-### 3.3 Service Config Schema
+### 3.2 Service Config Schema
 
 ```json
 {
@@ -149,8 +106,9 @@ Authorization:
 POST /v1/charges
 Headers:
   X-User-Id: string (required, injected by proxy after IdP auth)
-  X-Api: string (required, e.g. "vatguard")
-  X-Endpoint: string (required, e.g. "/v1/vies/{number}")
+  X-Cost:    integer credits (required, reported by the caller)
+  X-Api:     string (optional metadata, e.g. "vatguard")
+  X-Endpoint: string (optional metadata, e.g. "/v1/vies/{number}")
 
 Response 201:
   { "data": { "cost": 5, "balance": 495, "plan_type": "prepaid" } }
@@ -218,7 +176,7 @@ Response 200:
 
 ```
 GET /health → { "data": { "status": "ok" } }
-GET /version → { "data": { "version": "0.6.3-unstable" } }
+GET /version → { "data": { "version": "0.7.0-unstable" } }
 ```
 
 ## 5. Database Schema

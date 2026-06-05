@@ -21,15 +21,11 @@ type EventRepository interface {
 	SumCostByUserAndDateRange(ctx context.Context, userID string, from, to time.Time) (int64, error)
 }
 
-// PricingConfig resolves the cost for an API+endpoint at a given time.
-type PricingConfig interface {
-	CostFor(ctx context.Context, api, endpoint string, t time.Time) (baseCost, finalCost int64, multiplier float64, err error)
-}
-
 // Meterer performs an atomic balance deduction + event recording in a single transaction.
-// This prevents race conditions and ensures financial consistency.
+// This prevents race conditions and ensures financial consistency. The cost (in
+// credits) is supplied by the trusted caller; this service does not price requests.
 type Meterer interface {
-	MeterAtomic(ctx context.Context, userID, api, endpoint string, baseCost int64, multiplier float64, finalCost int64) (*MeterResult, error)
+	MeterAtomic(ctx context.Context, userID, api, endpoint string, cost int64) (*MeterResult, error)
 }
 
 // MeterResult is the outcome of a metering request.

@@ -40,7 +40,6 @@ func main() {
 	// Load configuration
 	configLoader := infrastructure.NewConfigLoader(infrastructure.DefaultServiceConfig(), logger)
 
-	// Try loading from local config file
 	configPath := "etc/config.json"
 	if _, err := os.Stat(configPath); err == nil {
 		if err := configLoader.LoadFromFile(configPath); err != nil {
@@ -48,12 +47,9 @@ func main() {
 		}
 	}
 
-	// Apply environment variable overrides
 	configLoader.ApplyEnvOverrides()
-
 	cfg := configLoader.Get()
 
-	// Set log level from config
 	switch cfg.LogLevel {
 	case "debug":
 		logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -66,18 +62,6 @@ func main() {
 		slog.SetDefault(logger)
 	}
 
-	// Load pricing configuration
-	pricingConfig := infrastructure.PricingFile{DefaultCost: 1}
-	pricingPath := "etc/pricing.json"
-	if _, err := os.Stat(pricingPath); err == nil {
-		pricingConfig, err = infrastructure.LoadPricingFromFile(pricingPath)
-		if err != nil {
-			logger.Error("failed to load pricing config", slog.String("error", err.Error()))
-			os.Exit(1)
-		}
-	}
-	pricingEngine := infrastructure.NewPricingEngine(pricingConfig, logger)
-
 	// Connect to PostgreSQL
 	ctx := context.Background()
 	store, err := infrastructure.NewPostgresStore(ctx, cfg.DatabaseURL, logger)
@@ -87,8 +71,9 @@ func main() {
 	}
 	defer store.Close()
 
-	// Wire up use cases — store implements Meterer for atomic transactions
-	meterUC := application.NewMeterUseCase(store, store, pricingEngine, store)
+	// Wire up use cases — the cost is supplied by the caller, so there is no
+	// pricing dependency. The store implements Meterer for atomic transactions.
+	meterUC := application.NewMeterUseCase(store, store, store)
 	getBalanceUC := application.NewGetBalanceUseCase(store, store)
 	getUsageUC := application.NewGetUsageUseCase(store)
 	topUpUC := application.NewTopUpUseCase(store)
@@ -96,26 +81,23 @@ func main() {
 	adminUsageUC := application.NewGetAdminUsageUseCase(store)
 	listUsersUC := application.NewListUsersUseCase(store)
 
-	// Create handler
 	handler := infrastructure.NewHandler(
 		meterUC, getBalanceUC, getUsageUC, topUpUC, setPlanUC, adminUsageUC, listUsersUC,
 		store, logger, configLoader,
 	)
 
-	// Create router
 	router := infrastructure.NewRouter(handler, logger)
 
-	// Start config refresh loop (also reloads pricing config)
-	startConfigRefresh(ctx, configLoader, pricingEngine, pricingPath, logger)
+	// Periodically refresh service config from the remote source, if configured.
+	startConfigRefresh(ctx, configLoader, logger)
 
-	// Start HTTP server
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: router,
 	}
 
-	// Graceful shutdown
+	// Graceful shutdown + SIGHUP reload
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -123,7 +105,7 @@ func main() {
 			sig := <-sigCh
 			if sig == syscall.SIGHUP {
 				logger.Info("SIGHUP received, reloading config")
-				reloadAllConfig(configLoader, pricingEngine, pricingPath, logger)
+				reloadConfig(configLoader, logger)
 				continue
 			}
 			logger.Info("received signal, shutting down", slog.String("signal", sig.String()))
@@ -146,8 +128,8 @@ func main() {
 	logger.Info("metering service stopped")
 }
 
-// startConfigRefresh periodically reloads config and pricing.
-func startConfigRefresh(ctx context.Context, cl *infrastructure.ConfigLoader, pe *infrastructure.PricingEngine, pricingPath string, logger *slog.Logger) {
+// startConfigRefresh periodically reloads the service config from the remote URL.
+func startConfigRefresh(ctx context.Context, cl *infrastructure.ConfigLoader, logger *slog.Logger) {
 	go func() {
 		cfg := cl.Get()
 		interval := time.Duration(cfg.ConfigRefreshIntervalSecs) * time.Second
@@ -162,24 +144,14 @@ func startConfigRefresh(ctx context.Context, cl *infrastructure.ConfigLoader, pe
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				reloadAllConfig(cl, pe, pricingPath, logger)
+				reloadConfig(cl, logger)
 			}
 		}
 	}()
 }
 
-// reloadAllConfig reloads both service config and pricing config.
-func reloadAllConfig(cl *infrastructure.ConfigLoader, pe *infrastructure.PricingEngine, pricingPath string, logger *slog.Logger) {
-	// Reload pricing config
-	if pricingPath != "" {
-		if newPricing, err := infrastructure.LoadPricingFromFile(pricingPath); err == nil {
-			pe.Reload(newPricing)
-		} else {
-			logger.Error("failed to reload pricing", slog.String("error", err.Error()))
-		}
-	}
-
-	// Reload remote config if configured
+// reloadConfig reloads the service config from the remote URL, if configured.
+func reloadConfig(cl *infrastructure.ConfigLoader, logger *slog.Logger) {
 	cfg := cl.Get()
 	if cfg.ConfigRemoteURL != "" {
 		if err := cl.LoadFromURL(cfg.ConfigRemoteURL); err != nil {

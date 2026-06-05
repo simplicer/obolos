@@ -72,7 +72,7 @@ func (s *inMemoryStore) SumCostByUserAndDateRange(_ context.Context, userID stri
 	return sum, nil
 }
 
-func (s *inMemoryStore) MeterAtomic(_ context.Context, userID, api, endpoint string, baseCost int64, multiplier float64, finalCost int64) (*application.MeterResult, error) {
+func (s *inMemoryStore) MeterAtomic(_ context.Context, userID, api, endpoint string, cost int64) (*application.MeterResult, error) {
 	user := s.users[userID]
 	if user == nil {
 		return nil, application.ErrUserNotFound
@@ -80,38 +80,30 @@ func (s *inMemoryStore) MeterAtomic(_ context.Context, userID, api, endpoint str
 	balanceBefore := user.Balance.Value()
 	plan := user.Plan
 
-	if !plan.CanDeduct(finalCost, user.Balance) {
-		return &application.MeterResult{Cost: finalCost, Balance: balanceBefore, PlanType: plan.String()}, application.ErrInsufficientCredits
+	if !plan.CanDeduct(cost, user.Balance) {
+		return &application.MeterResult{Cost: cost, Balance: balanceBefore, PlanType: plan.String()}, application.ErrInsufficientCredits
 	}
 
-	newBalance := user.Balance.Debit(finalCost)
+	newBalance := user.Balance.Debit(cost)
 	overage := plan.IsOverage(newBalance)
 	user.Balance = newBalance
 	s.users[userID] = user
 
 	s.events = append(s.events, domain.NewMeteringEvent(
 		"test-id", userID, api, endpoint,
-		baseCost, multiplier, finalCost,
+		cost, 1.0, cost,
 		balanceBefore, newBalance.Value(),
 		plan.String(), overage,
 	))
 
-	return &application.MeterResult{Cost: finalCost, Balance: newBalance.Value(), PlanType: plan.String()}, nil
+	return &application.MeterResult{Cost: cost, Balance: newBalance.Value(), PlanType: plan.String()}, nil
 }
 
-type staticPricing struct {
-	cost int64
-}
-
-func (p staticPricing) CostFor(_ context.Context, _, _ string, _ time.Time) (int64, int64, float64, error) {
-	return p.cost, p.cost, 1.0, nil
-}
-
-func setupHandler(store *inMemoryStore, pricing application.PricingConfig) *Handler {
+func setupHandler(store *inMemoryStore) *Handler {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	configLoader := NewConfigLoader(DefaultServiceConfig(), logger)
 
-	meterUC := application.NewMeterUseCase(store, store, pricing, store)
+	meterUC := application.NewMeterUseCase(store, store, store)
 	getBalanceUC := application.NewGetBalanceUseCase(store, store)
 	getUsageUC := application.NewGetUsageUseCase(store)
 	topUpUC := application.NewTopUpUseCase(store)
@@ -122,11 +114,11 @@ func setupHandler(store *inMemoryStore, pricing application.PricingConfig) *Hand
 	return NewHandler(meterUC, getBalanceUC, getUsageUC, topUpUC, setPlanUC, adminUsageUC, listUsersUC, store, logger, configLoader)
 }
 
-func setupRouter(store *inMemoryStore, pricing application.PricingConfig) http.Handler {
+func setupRouter(store *inMemoryStore) http.Handler {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	configLoader := NewConfigLoader(DefaultServiceConfig(), logger)
 
-	meterUC := application.NewMeterUseCase(store, store, pricing, store)
+	meterUC := application.NewMeterUseCase(store, store, store)
 	getBalanceUC := application.NewGetBalanceUseCase(store, store)
 	getUsageUC := application.NewGetUsageUseCase(store)
 	topUpUC := application.NewTopUpUseCase(store)
@@ -142,12 +134,13 @@ func setupRouter(store *inMemoryStore, pricing application.PricingConfig) http.H
 
 func TestHandleCreateCharge_Success(t *testing.T) {
 	store := newInMemoryStore()
-	handler := setupHandler(store, staticPricing{cost: 1})
+	handler := setupHandler(store)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/charges", nil)
 	req.Header.Set("X-User-Id", "user-1")
 	req.Header.Set("X-Api", "vatguard")
 	req.Header.Set("X-Endpoint", "/v1/vat/{number}")
+	req.Header.Set("X-Cost", "1")
 
 	w := httptest.NewRecorder()
 	handler.HandleCreateCharge(w, req)
@@ -169,15 +162,16 @@ func TestHandleCreateCharge_Success(t *testing.T) {
 
 func TestHandleCreateCharge_MissingHeaders(t *testing.T) {
 	store := newInMemoryStore()
-	handler := setupHandler(store, staticPricing{cost: 1})
+	handler := setupHandler(store)
 
 	tests := []struct {
 		name    string
 		headers map[string]string
 	}{
-		{"no user id", map[string]string{"X-Api": "a", "X-Endpoint": "e"}},
-		{"no api", map[string]string{"X-User-Id": "u", "X-Endpoint": "e"}},
-		{"no endpoint", map[string]string{"X-User-Id": "u", "X-Api": "a"}},
+		{"no user id", map[string]string{"X-Cost": "1"}},
+		{"no cost", map[string]string{"X-User-Id": "u"}},
+		{"invalid cost", map[string]string{"X-User-Id": "u", "X-Cost": "abc"}},
+		{"negative cost", map[string]string{"X-User-Id": "u", "X-Cost": "-5"}},
 	}
 
 	for _, tt := range tests {
@@ -203,12 +197,13 @@ func TestHandleCreateCharge_InsufficientCredits(t *testing.T) {
 		Balance: domain.NewBalance(0),
 	})
 
-	handler := setupHandler(store, staticPricing{cost: 5})
+	handler := setupHandler(store)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/charges", nil)
 	req.Header.Set("X-User-Id", "user-1")
 	req.Header.Set("X-Api", "vatguard")
 	req.Header.Set("X-Endpoint", "/v1/vies/{number}")
+	req.Header.Set("X-Cost", "5")
 
 	w := httptest.NewRecorder()
 	handler.HandleCreateCharge(w, req)
@@ -226,7 +221,7 @@ func TestHandleGetUser(t *testing.T) {
 		Balance: domain.NewBalance(500),
 	})
 
-	handler := setupHandler(store, staticPricing{cost: 1})
+	handler := setupHandler(store)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/user-1", nil)
 	req.SetPathValue("user_id", "user-1")
@@ -254,7 +249,7 @@ func TestHandleAddCredits(t *testing.T) {
 		Balance: domain.NewBalance(100),
 	})
 
-	handler := setupHandler(store, staticPricing{cost: 1})
+	handler := setupHandler(store)
 
 	body := bytes.NewBufferString(`{"amount": 500}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/users/user-1/credits", body)
@@ -284,7 +279,7 @@ func TestHandlePutPlan(t *testing.T) {
 		Balance: domain.NewBalance(100),
 	})
 
-	handler := setupHandler(store, staticPricing{cost: 1})
+	handler := setupHandler(store)
 
 	body := bytes.NewBufferString(`{"plan_type": "hybrid", "credits": 10000, "overage_rate": 0.01}`)
 	req := httptest.NewRequest(http.MethodPut, "/v1/users/user-1/plan", body)
@@ -302,12 +297,13 @@ func TestHandlePutPlan(t *testing.T) {
 // --- Router integration tests ---
 
 func TestRouter_CreateCharge(t *testing.T) {
-	router := setupRouter(newInMemoryStore(), staticPricing{cost: 1})
+	router := setupRouter(newInMemoryStore())
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/charges", nil)
 	req.Header.Set("X-User-Id", "user-1")
 	req.Header.Set("X-Api", "vatguard")
 	req.Header.Set("X-Endpoint", "/v1/vat/{number}")
+	req.Header.Set("X-Cost", "1")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -323,7 +319,7 @@ func TestRouter_GetOwnUser(t *testing.T) {
 		Plan:    domain.NewPrepaidPlan(),
 		Balance: domain.NewBalance(500),
 	})
-	router := setupRouter(store, staticPricing{cost: 1})
+	router := setupRouter(store)
 
 	// User reads their own data: X-User-Id matches path {id}
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/user-1", nil)
@@ -343,7 +339,7 @@ func TestRouter_GetOtherUser_Forbidden(t *testing.T) {
 		Plan:    domain.NewPrepaidPlan(),
 		Balance: domain.NewBalance(500),
 	})
-	router := setupRouter(store, staticPricing{cost: 1})
+	router := setupRouter(store)
 
 	// User tries to read another user's data: X-User-Id != path {id}
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/user-2", nil)
@@ -357,7 +353,7 @@ func TestRouter_GetOtherUser_Forbidden(t *testing.T) {
 }
 
 func TestRouter_ListUsers_AdminOnly(t *testing.T) {
-	router := setupRouter(newInMemoryStore(), staticPricing{cost: 1})
+	router := setupRouter(newInMemoryStore())
 
 	// Without admin key → 401
 	req := httptest.NewRequest(http.MethodGet, "/v1/users", nil)
@@ -376,7 +372,7 @@ func TestRouter_AddCredits_AdminOnly(t *testing.T) {
 		Plan:    domain.NewPrepaidPlan(),
 		Balance: domain.NewBalance(100),
 	})
-	router := setupRouter(store, staticPricing{cost: 1})
+	router := setupRouter(store)
 
 	// Without admin key → 401
 	body := bytes.NewBufferString(`{"amount": 500}`)
@@ -392,7 +388,7 @@ func TestRouter_AddCredits_AdminOnly(t *testing.T) {
 }
 
 func TestRouter_UserCharges_OwnerAccess(t *testing.T) {
-	router := setupRouter(newInMemoryStore(), staticPricing{cost: 1})
+	router := setupRouter(newInMemoryStore())
 
 	// Owner reads their own charges
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/user-1/charges", nil)
@@ -406,7 +402,7 @@ func TestRouter_UserCharges_OwnerAccess(t *testing.T) {
 }
 
 func TestRouter_UserCharges_OtherUser_Forbidden(t *testing.T) {
-	router := setupRouter(newInMemoryStore(), staticPricing{cost: 1})
+	router := setupRouter(newInMemoryStore())
 
 	// User tries to read another user's charges
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/user-2/charges", nil)

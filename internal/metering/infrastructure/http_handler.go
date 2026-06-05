@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,19 +88,25 @@ func (h *Handler) defaultPlan() (domain.PlanType, int64) {
 // HandleCreateCharge handles POST /v1/charges
 func (h *Handler) HandleCreateCharge(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("X-User-Id")
-	api := r.Header.Get("X-Api")
-	endpoint := r.Header.Get("X-Endpoint")
+	api := r.Header.Get("X-Api")           // optional metadata
+	endpoint := r.Header.Get("X-Endpoint") // optional metadata
+	costHeader := r.Header.Get("X-Cost")
 
 	if userID == "" {
 		writeProblem(w, http.StatusBadRequest, "missing_user_id", "X-User-Id header is required")
 		return
 	}
-	if api == "" {
-		writeProblem(w, http.StatusBadRequest, "missing_api", "X-Api header is required")
+	if !userIDPattern.MatchString(userID) {
+		writeProblem(w, http.StatusBadRequest, "invalid_user_id", "X-User-Id format is invalid")
 		return
 	}
-	if endpoint == "" {
-		writeProblem(w, http.StatusBadRequest, "missing_endpoint", "X-Endpoint header is required")
+	if costHeader == "" {
+		writeProblem(w, http.StatusBadRequest, "missing_cost", "X-Cost header is required (credits charged by the caller)")
+		return
+	}
+	cost, err := strconv.ParseInt(costHeader, 10, 64)
+	if err != nil || cost < 0 {
+		writeProblem(w, http.StatusBadRequest, "invalid_cost", "X-Cost must be a non-negative integer")
 		return
 	}
 
@@ -113,6 +120,7 @@ func (h *Handler) HandleCreateCharge(w http.ResponseWriter, r *http.Request) {
 		UserID:   userID,
 		API:      api,
 		Endpoint: endpoint,
+		Cost:     cost,
 	})
 
 	if err != nil {

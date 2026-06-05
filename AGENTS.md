@@ -14,7 +14,7 @@ Architecture rules for the Metering service. Agents and developers MUST follow t
 - Pure business logic only.
 - No framework dependencies.
 - No infrastructure imports.
-- Contains: Balance, Plan, PricingRule, MeteringEvent, UsageRecord value objects and entities.
+- Contains: Balance, Plan, MeteringEvent value objects and entities.
 - Tests: colocated `*_test.go` files.
 
 ### Application (`internal/metering/application/`)
@@ -67,14 +67,14 @@ Tests colocated with source (Go convention). No separate `tests/` directory.
 
 - Configuration files under `etc/`.
 - Primary format: JSON (strict schema, typed, validated).
-- `etc/pricing.json` — pricing rules per API/endpoint.
 - `etc/config.json` — service configuration (port, log level, DB connection).
+- There is **no pricing configuration**: request cost is reported by the
+  caller via `X-Cost` (ADR 0008).
 - **Config sources** (priority order):
   1. Remote HTTP endpoint (dynamic, hot-reloadable)
   2. Local JSON file (fallback, reloadable on SIGHUP)
   3. Environment variables (overrides)
 - Config MUST be reloadable without restart.
-- Pricing config changes take effect on next request (no caching of pricing rules beyond TTL).
 
 ## Deployment & infra layout
 
@@ -130,44 +130,17 @@ The domain MUST support three plan types:
 Every user has exactly one active plan. Plans define:
 - Plan type (prepaid, unlimited, hybrid)
 - Included credits (for prepaid/hybrid)
-- Overage rate (for hybrid — cost per unit after exhaustion)
-- Rate limits (requests per minute)
-- Time-based pricing modifiers (peak/off-peak multipliers)
+- Entitlement rules: time windows, grants/expiry, rate limits (roadmap)
 
-## Pricing Rules
+The *price* of a request is NOT a plan concern — it is reported by the caller
+(`X-Cost`). The plan governs how the client's credits may be spent, not what
+a call costs.
 
-Pricing is defined per API and per endpoint in `pricing.json`:
+## Cost
 
-```json
-{
-  "apis": {
-    "vatguard": {
-      "endpoints": {
-        "/v1/vat/{number}": { "base_cost": 1 },
-        "/v1/vies/{number}": { "base_cost": 5 },
-        "/health": { "base_cost": 0 },
-        "/version": { "base_cost": 0 }
-      }
-    },
-    "api-2": {
-      "endpoints": {
-        "/v1/resource": {
-          "base_cost": 3,
-          "time_modifiers": [
-            {
-              "hours": "09:00-17:00",
-              "days": ["mon", "tue", "wed", "thu", "fri"],
-              "multiplier": 1.5
-            }
-          ]
-        },
-        "/v1/heavy": { "base_cost": 10 }
-      }
-    }
-  },
-  "default_cost": 1
-}
-```
+This service does not price requests. The trusted caller reports the cost in
+credits via the `X-Cost` header on `POST /v1/charges` (ADR 0008). Metering
+validates `cost ≥ 0` and enforces the plan's credit rules against it.
 
 ## API Surface
 

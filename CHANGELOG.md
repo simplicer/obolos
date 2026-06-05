@@ -12,6 +12,10 @@ release will be `1.0.0`.
 ## [Unreleased]
 
 ### Changed
+- **BREAKING**: request cost is now supplied by the trusted caller via the
+  `X-Cost` header (non-negative integer); this service no longer prices
+  requests. `X-Api`/`X-Endpoint` become optional event metadata. Missing or
+  invalid `X-Cost` → `400`. See ADR 0008.
 - Renamed container/deploy artifacts to vendor-neutral names
   (`infra/image/Containerfile`, `infra/compose.yaml`) and Makefile targets
   (`image-build`, `stack-up`, `stack-down`); added `infra/compose.test.yaml`
@@ -19,7 +23,13 @@ release will be `1.0.0`.
   (see ADR 0007).
 - Added Architecture Decision Records under `docs/adrs/` (DDD vertical slicing,
   stdlib-only HTTP, proxy-trusted identity, signed-integer balance, layered
-  JSON config, RESTful resource API, vendor-neutral infra naming).
+  JSON config, RESTful resource API, vendor-neutral infra naming,
+  cost supplied by caller).
+
+### Removed
+- Pricing subsystem: pricing engine, file/remote pricing loaders,
+  `domain.PricingRule` and time modifiers, `etc/pricing.example.json`, the
+  `PricingConfig` port and the remote pricing refresh loop.
 - Relocated `SPECS.md` to `docs/SPECS.md` and added the OpenAPI 3.1 contract
   at `docs/openapi.yaml`. Reconciled `SPECS.md`, `AGENTS.md` and `README.md`
   with the implemented RESTful surface (`POST /v1/charges`,
@@ -39,15 +49,13 @@ release will be `1.0.0`.
   `migrations/`, `var/log/`).
 - Domain layer (`internal/metering/domain`): `Balance` value object
   (signed-integer credits), `Plan` (prepaid / unlimited / hybrid),
-  `PricingRule` with time modifiers, `MeteringEvent` entity, `User` aggregate.
+  `MeteringEvent` entity, `User` aggregate.
 - Application layer (`internal/metering/application`): use cases `Meter`,
   `GetBalance`, `GetUsage`, `TopUp`, `SetPlan`, `GetAdminUsage`, `ListUsers`,
   driven through `ports.go` interfaces (`UserRepository`, `EventRepository`,
-  `Meterer`, `PricingConfig`) with typed application errors.
-- Pricing engine (`internal/metering/infrastructure/pricing_engine.go`):
-  resolves per-API/per-endpoint cost with time modifiers; pricing and
-  service config loaders (`pricing_loader.go`, `config_loader.go`) support
-  local JSON files, remote HTTP sources with TTL refresh, and env overrides.
+  `Meterer`) with typed application errors.
+- Service config loader (`config_loader.go`): local JSON file, remote HTTP
+  source with TTL refresh, and environment overrides.
 - HTTP infrastructure (`internal/metering/infrastructure/http_handler.go`,
   `router.go`): stdlib `net/http` handlers for all endpoints with RFC 7807
   problem+json errors and a `{ "data": ... }` envelope; Go 1.22+ ServeMux
@@ -56,8 +64,8 @@ release will be `1.0.0`.
   `pgx/v5`-backed `UserRepository` and `EventRepository`, including atomic
   meter-and-deduct, with schema migration `migrations/001_initial_schema.sql`.
 - Server entry point (`cmd/server/main.go`): loads configuration, wires the
-  PostgreSQL store, pricing engine and use cases into the HTTP router with
-  structured `slog` JSON logging, and runs the server with graceful shutdown.
+  PostgreSQL store and use cases into the HTTP router with structured `slog`
+  JSON logging, and runs the server with graceful shutdown.
 
 ### Removed
 - `PROMPT.md` (the temporary development guide), now that the implementation

@@ -9,7 +9,7 @@ Receives `X-User-Id`, `X-Api`, `X-Endpoint` headers from the proxy and answers: 
 ## Features
 
 - **Three plan types**: Prepaid (block at 0), Unlimited (no limit), Hybrid (prepaid → postpaid overage)
-- **Per-endpoint pricing**: JSON config with time-based modifiers (peak/off-peak)
+- **Cost reported by the caller**: the trusted proxy sends the per-request cost in `X-Cost`; metering does not own a price catalog
 - **Hot-reloadable config**: Local JSON file or remote HTTP endpoint
 - **Auto-provisioning**: New users get default plan on first request
 - **PostgreSQL**: Durable storage for balances and metering events
@@ -30,7 +30,7 @@ DDD with vertical slicing. Single bounded context: `metering`.
 
 ```
 internal/metering/
-├── domain/          # Balance, Plan, PricingRule, MeteringEvent
+├── domain/          # Balance, Plan, MeteringEvent
 ├── application/     # Meter, GetBalance, GetUsage, TopUp, SetPlan
 └── infrastructure/  # HTTP handlers, PostgreSQL, config loader
 ```
@@ -65,12 +65,14 @@ make test-compose  # unit + integration tests via infra/compose.test.yaml
 
 ### Configuration
 
-Copy example configs and edit:
+Copy the example config and edit:
 
 ```bash
 cp etc/config.example.json etc/config.json
-cp etc/pricing.example.json etc/pricing.json
 ```
+
+There is no pricing file: the per-request cost is sent by the caller in the
+`X-Cost` header (see [`docs/adrs/0008-cost-supplied-by-caller.md`](docs/adrs/0008-cost-supplied-by-caller.md)).
 
 ## API
 

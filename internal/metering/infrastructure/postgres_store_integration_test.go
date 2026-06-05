@@ -177,7 +177,7 @@ func TestIntegration_MeterAtomic(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	res, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 4, 1.0, 4)
+	res, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 4)
 	if err != nil {
 		t.Fatalf("meter: %v", err)
 	}
@@ -193,10 +193,10 @@ func TestIntegration_MeterAtomic(t *testing.T) {
 
 	// Drain the balance, then a charge that exceeds it must be rejected and
 	// must not change the balance.
-	if _, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 6, 1.0, 6); err != nil {
+	if _, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 6); err != nil {
 		t.Fatalf("second meter: %v", err)
 	}
-	rejected, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 1, 1.0, 1)
+	rejected, err := store.MeterAtomic(ctx, "user-c", "vatguard", "/v1/vat/{number}", 1)
 	if err == nil {
 		t.Fatal("expected insufficient-credits error, got nil")
 	}

@@ -1,6 +1,6 @@
 # 0005 — Layered JSON configuration sources
 
-- Status: Accepted
+- Status: Accepted (pricing config portion superseded by ADR 0008)
 - Date: 2025-06-04
 
 ## Context

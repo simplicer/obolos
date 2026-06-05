@@ -212,8 +212,9 @@ func (s *PostgresStore) SumCostByUserAndDateRange(ctx context.Context, userID st
 // --- Meterer (atomic balance deduction + event recording) ---
 
 // MeterAtomic performs balance deduction and event recording in a single DB transaction.
-// It uses SELECT FOR UPDATE to prevent race conditions (double-spend).
-func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint string, baseCost int64, multiplier float64, finalCost int64) (*application.MeterResult, error) {
+// It uses SELECT FOR UPDATE to prevent race conditions (double-spend). The cost is
+// the credit amount reported by the trusted caller.
+func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint string, cost int64) (*application.MeterResult, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -243,15 +244,15 @@ func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint s
 	balance := domain.NewBalance(balanceBefore)
 
 	// Re-check inside the lock — another request may have changed the balance
-	if !plan.CanDeduct(finalCost, balance) {
+	if !plan.CanDeduct(cost, balance) {
 		return &application.MeterResult{
-			Cost:     finalCost,
+			Cost:     cost,
 			Balance:  balanceBefore,
 			PlanType: planType,
 		}, application.ErrInsufficientCredits
 	}
 
-	newBalance := balance.Debit(finalCost)
+	newBalance := balance.Debit(cost)
 	overage := plan.IsOverage(newBalance)
 	balanceAfter := newBalance.Value()
 
@@ -272,7 +273,7 @@ func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint s
 		  balance_before, balance_after, plan_type, overage, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
 		eventID, userID, api, endpoint,
-		baseCost, multiplier, finalCost,
+		cost, 1.0, cost,
 		balanceBefore, balanceAfter, planType,
 		overage,
 	)
@@ -287,14 +288,14 @@ func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint s
 
 	s.logger.Info("atomic metering complete",
 		slog.String("user_id", userID),
-		slog.Int64("cost", finalCost),
+		slog.Int64("cost", cost),
 		slog.Int64("balance_before", balanceBefore),
 		slog.Int64("balance_after", balanceAfter),
 		slog.Bool("overage", overage),
 	)
 
 	return &application.MeterResult{
-		Cost:     finalCost,
+		Cost:     cost,
 		Balance:  balanceAfter,
 		PlanType: planType,
 	}, nil

@@ -13,6 +13,7 @@ var (
 	ErrUserNotFound        = errors.New("user_not_found")
 	ErrInvalidPlanType     = errors.New("invalid_plan_type")
 	ErrInvalidAmount       = errors.New("invalid_amount")
+	ErrInvalidCost         = errors.New("invalid_cost")
 )
 
 // now returns the current UTC time. Extracted for testability.

@@ -84,17 +84,6 @@ func (m *mockEventRepo) SumCostByUserAndDateRange(_ context.Context, userID stri
 	return sum, nil
 }
 
-type mockPricingConfig struct {
-	cost       int64
-	baseCost   int64
-	multiplier float64
-	err        error
-}
-
-func (m *mockPricingConfig) CostFor(_ context.Context, _, _ string, _ time.Time) (int64, int64, float64, error) {
-	return m.baseCost, m.cost, m.multiplier, m.err
-}
-
 // mockMeterer simulates atomic metering for unit tests.
 type mockMeterer struct {
 	mu     sync.Mutex
@@ -106,7 +95,7 @@ func newMockMeterer(users *mockUserRepo, events *mockEventRepo) *mockMeterer {
 	return &mockMeterer{users: users, events: events}
 }
 
-func (m *mockMeterer) MeterAtomic(ctx context.Context, userID, api, endpoint string, baseCost int64, multiplier float64, finalCost int64) (*MeterResult, error) {
+func (m *mockMeterer) MeterAtomic(ctx context.Context, userID, api, endpoint string, cost int64) (*MeterResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -118,24 +107,24 @@ func (m *mockMeterer) MeterAtomic(ctx context.Context, userID, api, endpoint str
 	balanceBefore := user.Balance.Value()
 	plan := user.Plan
 
-	if !plan.CanDeduct(finalCost, user.Balance) {
-		return &MeterResult{Cost: finalCost, Balance: balanceBefore, PlanType: plan.String()}, ErrInsufficientCredits
+	if !plan.CanDeduct(cost, user.Balance) {
+		return &MeterResult{Cost: cost, Balance: balanceBefore, PlanType: plan.String()}, ErrInsufficientCredits
 	}
 
-	newBalance := user.Balance.Debit(finalCost)
+	newBalance := user.Balance.Debit(cost)
 	overage := plan.IsOverage(newBalance)
 	user.Balance = newBalance
 	m.users.Upsert(ctx, user)
 
 	event := domain.NewMeteringEvent(
 		generateID(), userID, api, endpoint,
-		baseCost, multiplier, finalCost,
+		cost, 1.0, cost,
 		balanceBefore, newBalance.Value(),
 		plan.String(), overage,
 	)
 	m.events.Save(ctx, event)
 
-	return &MeterResult{Cost: finalCost, Balance: newBalance.Value(), PlanType: plan.String()}, nil
+	return &MeterResult{Cost: cost, Balance: newBalance.Value(), PlanType: plan.String()}, nil
 }
 
 // --- Meter use case tests ---
@@ -143,7 +132,6 @@ func (m *mockMeterer) MeterAtomic(ctx context.Context, userID, api, endpoint str
 func TestMeterUseCase_PrepaidSufficient(t *testing.T) {
 	users := newMockUserRepo()
 	events := newMockEventRepo()
-	pricing := &mockPricingConfig{baseCost: 5, cost: 5, multiplier: 1.0}
 
 	users.Upsert(context.Background(), &domain.User{
 		ID:      "user-1",
@@ -151,9 +139,9 @@ func TestMeterUseCase_PrepaidSufficient(t *testing.T) {
 		Balance: domain.NewBalance(100),
 	})
 
-	uc := NewMeterUseCase(users, events, pricing, newMockMeterer(users, events))
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
 	result, err := uc.Execute(context.Background(), MeterInput{
-		UserID: "user-1", API: "vatguard", Endpoint: "/v1/vies/{number}",
+		UserID: "user-1", API: "vatguard", Endpoint: "/v1/vies/{number}", Cost: 5,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -172,7 +160,6 @@ func TestMeterUseCase_PrepaidSufficient(t *testing.T) {
 func TestMeterUseCase_PrepaidInsufficient(t *testing.T) {
 	users := newMockUserRepo()
 	events := newMockEventRepo()
-	pricing := &mockPricingConfig{baseCost: 5, cost: 5, multiplier: 1.0}
 
 	users.Upsert(context.Background(), &domain.User{
 		ID:      "user-1",
@@ -180,9 +167,9 @@ func TestMeterUseCase_PrepaidInsufficient(t *testing.T) {
 		Balance: domain.NewBalance(3),
 	})
 
-	uc := NewMeterUseCase(users, events, pricing, newMockMeterer(users, events))
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
 	_, err := uc.Execute(context.Background(), MeterInput{
-		UserID: "user-1", API: "vatguard", Endpoint: "/v1/vies/{number}",
+		UserID: "user-1", API: "vatguard", Endpoint: "/v1/vies/{number}", Cost: 5,
 	})
 	if err != ErrInsufficientCredits {
 		t.Errorf("expected ErrInsufficientCredits, got %v", err)
@@ -192,7 +179,6 @@ func TestMeterUseCase_PrepaidInsufficient(t *testing.T) {
 func TestMeterUseCase_UnlimitedPlan(t *testing.T) {
 	users := newMockUserRepo()
 	events := newMockEventRepo()
-	pricing := &mockPricingConfig{baseCost: 5, cost: 5, multiplier: 1.0}
 
 	users.Upsert(context.Background(), &domain.User{
 		ID:      "user-1",
@@ -200,9 +186,9 @@ func TestMeterUseCase_UnlimitedPlan(t *testing.T) {
 		Balance: domain.NewBalance(0),
 	})
 
-	uc := NewMeterUseCase(users, events, pricing, newMockMeterer(users, events))
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
 	result, err := uc.Execute(context.Background(), MeterInput{
-		UserID: "user-1", API: "vatguard", Endpoint: "/v1/vies/{number}",
+		UserID: "user-1", API: "vatguard", Endpoint: "/v1/vies/{number}", Cost: 5,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -218,7 +204,6 @@ func TestMeterUseCase_UnlimitedPlan(t *testing.T) {
 func TestMeterUseCase_HybridPlan(t *testing.T) {
 	users := newMockUserRepo()
 	events := newMockEventRepo()
-	pricing := &mockPricingConfig{baseCost: 5, cost: 5, multiplier: 1.0}
 
 	users.Upsert(context.Background(), &domain.User{
 		ID:      "user-1",
@@ -226,9 +211,9 @@ func TestMeterUseCase_HybridPlan(t *testing.T) {
 		Balance: domain.NewBalance(3),
 	})
 
-	uc := NewMeterUseCase(users, events, pricing, newMockMeterer(users, events))
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
 	result, err := uc.Execute(context.Background(), MeterInput{
-		UserID: "user-1", API: "vatguard", Endpoint: "/v1/vies/{number}",
+		UserID: "user-1", API: "vatguard", Endpoint: "/v1/vies/{number}", Cost: 5,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -252,7 +237,6 @@ func TestMeterUseCase_HybridPlan(t *testing.T) {
 func TestMeterUseCase_ZeroCost(t *testing.T) {
 	users := newMockUserRepo()
 	events := newMockEventRepo()
-	pricing := &mockPricingConfig{baseCost: 0, cost: 0, multiplier: 1.0}
 
 	users.Upsert(context.Background(), &domain.User{
 		ID:      "user-1",
@@ -260,9 +244,9 @@ func TestMeterUseCase_ZeroCost(t *testing.T) {
 		Balance: domain.NewBalance(10),
 	})
 
-	uc := NewMeterUseCase(users, events, pricing, newMockMeterer(users, events))
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
 	result, err := uc.Execute(context.Background(), MeterInput{
-		UserID: "user-1", API: "vatguard", Endpoint: "/health",
+		UserID: "user-1", API: "vatguard", Endpoint: "/health", Cost: 0,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -278,11 +262,10 @@ func TestMeterUseCase_ZeroCost(t *testing.T) {
 func TestMeterUseCase_UserNotFound(t *testing.T) {
 	users := newMockUserRepo()
 	events := newMockEventRepo()
-	pricing := &mockPricingConfig{baseCost: 1, cost: 1, multiplier: 1.0}
 
-	uc := NewMeterUseCase(users, events, pricing, newMockMeterer(users, events))
+	uc := NewMeterUseCase(users, events, newMockMeterer(users, events))
 	_, err := uc.Execute(context.Background(), MeterInput{
-		UserID: "unknown", API: "vatguard", Endpoint: "/v1/vat/{number}",
+		UserID: "unknown", API: "vatguard", Endpoint: "/v1/vat/{number}", Cost: 1,
 	})
 	if err == nil {
 		t.Error("expected error for unknown user")

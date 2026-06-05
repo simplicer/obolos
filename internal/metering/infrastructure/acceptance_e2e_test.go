@@ -20,9 +20,10 @@ import (
 
 const e2eAdminKey = "e2e-admin-key"
 
-// e2eServer starts a loopback HTTP server wired to an in-memory store and a
-// fixed per-request cost, with admin authentication enabled.
-func e2eServer(t *testing.T, cost int64) (*httptest.Server, *inMemoryStore) {
+// e2eServer starts a loopback HTTP server wired to an in-memory store, with
+// admin authentication enabled. The per-request cost is supplied by the caller
+// via the X-Cost header on each charge.
+func e2eServer(t *testing.T) (*httptest.Server, *inMemoryStore) {
 	t.Helper()
 
 	// adminAPIKey is a package-level var normally populated from the
@@ -33,7 +34,7 @@ func e2eServer(t *testing.T, cost int64) (*httptest.Server, *inMemoryStore) {
 	t.Cleanup(func() { adminAPIKey = prev })
 
 	store := newInMemoryStore()
-	srv := httptest.NewServer(setupRouter(store, staticPricing{cost: cost}))
+	srv := httptest.NewServer(setupRouter(store))
 	t.Cleanup(srv.Close)
 	return srv, store
 }
@@ -82,12 +83,12 @@ func (c *e2eClient) do(method, path string, headers map[string]string, body stri
 }
 
 func TestE2E_FullMeteringJourney(t *testing.T) {
-	srv, _ := e2eServer(t, 5)
+	srv, _ := e2eServer(t)
 	c := &e2eClient{t: t, base: srv.URL, http: srv.Client()}
 
 	owner := map[string]string{"X-User-Id": "alice"}
 	admin := map[string]string{"X-Admin-Key": e2eAdminKey}
-	proxy := map[string]string{"X-User-Id": "alice", "X-Api": "vatguard", "X-Endpoint": "/v1/vies/{number}"}
+	proxy := map[string]string{"X-User-Id": "alice", "X-Api": "vatguard", "X-Endpoint": "/v1/vies/{number}", "X-Cost": "5"}
 
 	// 1. Well-known probes are public.
 	if code, _ := c.do(http.MethodGet, "/health", nil, ""); code != http.StatusOK {
@@ -142,7 +143,7 @@ func TestE2E_FullMeteringJourney(t *testing.T) {
 }
 
 func TestE2E_AuthorizationBoundaries(t *testing.T) {
-	srv, store := e2eServer(t, 5)
+	srv, store := e2eServer(t)
 	c := &e2eClient{t: t, base: srv.URL, http: srv.Client()}
 
 	store.Upsert(context.Background(), &domain.User{
@@ -164,7 +165,7 @@ func TestE2E_AuthorizationBoundaries(t *testing.T) {
 }
 
 func TestE2E_PrepaidExhaustionReturns402(t *testing.T) {
-	srv, store := e2eServer(t, 5)
+	srv, store := e2eServer(t)
 	c := &e2eClient{t: t, base: srv.URL, http: srv.Client()}
 
 	// Prepaid user with exactly one charge worth of credits.
@@ -172,7 +173,7 @@ func TestE2E_PrepaidExhaustionReturns402(t *testing.T) {
 		ID: "bob", Plan: domain.NewPrepaidPlan(), Balance: domain.NewBalance(5),
 	})
 
-	proxy := map[string]string{"X-User-Id": "bob", "X-Api": "vatguard", "X-Endpoint": "/v1/vies/{number}"}
+	proxy := map[string]string{"X-User-Id": "bob", "X-Api": "vatguard", "X-Endpoint": "/v1/vies/{number}", "X-Cost": "5"}
 
 	// First charge succeeds and drains the balance to zero.
 	if code, data := c.do(http.MethodPost, "/v1/charges", proxy, ""); code != http.StatusCreated || data["balance"].(float64) != 0 {
