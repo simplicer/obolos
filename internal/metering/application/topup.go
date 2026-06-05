@@ -3,6 +3,8 @@ package application
 import (
 	"context"
 	"fmt"
+
+	"codeberg.org/simplicer/metering/internal/metering/domain"
 )
 
 // TopUpUseCase adds credits to a user's balance.
@@ -23,7 +25,7 @@ type TopUpInput struct {
 
 // Execute adds amount credits to the user's balance atomically.
 func (uc *TopUpUseCase) Execute(ctx context.Context, input TopUpInput) (*TopUpResult, error) {
-	if input.Amount <= 0 {
+	if input.Amount <= 0 || input.Amount > domain.MaxCredits {
 		return nil, ErrInvalidAmount
 	}
 

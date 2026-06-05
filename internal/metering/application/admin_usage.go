@@ -26,8 +26,10 @@ func (uc *GetAdminUsageUseCase) Execute(ctx context.Context, userID string, from
 	var totalCost, overageCost int64
 	for _, e := range events {
 		totalCost += e.FinalCost
-		if e.Overage {
-			overageCost += e.FinalCost
+		// Only the portion of this charge that crossed below zero is overage,
+		// not the whole final cost: depth(after) - depth(before).
+		if portion := negDepth(e.BalanceAfter) - negDepth(e.BalanceBefore); portion > 0 {
+			overageCost += portion
 		}
 	}
 
@@ -36,4 +38,12 @@ func (uc *GetAdminUsageUseCase) Execute(ctx context.Context, userID string, from
 		TotalCost:   totalCost,
 		OverageCost: overageCost,
 	}, nil
+}
+
+// negDepth is how far below zero a balance is (0 when non-negative).
+func negDepth(balance int64) int64 {
+	if balance < 0 {
+		return -balance
+	}
+	return 0
 }

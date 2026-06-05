@@ -142,7 +142,8 @@ func (e Entitlements) Validate() error {
 	default:
 		return errInvalidEntitlements
 	}
-	if e.Grant.Amount < 0 || e.Grant.Cap < 0 {
+	if e.Grant.Amount < 0 || e.Grant.Cap < 0 ||
+		e.Grant.Amount > MaxCredits || e.Grant.Cap > MaxCredits {
 		return errInvalidEntitlements
 	}
 	if e.RateLimitPerMin < 0 {

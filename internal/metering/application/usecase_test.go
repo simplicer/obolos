@@ -490,6 +490,33 @@ func TestTopUpUseCase_InvalidAmount(t *testing.T) {
 	if err != ErrInvalidAmount {
 		t.Errorf("expected ErrInvalidAmount for negative, got %v", err)
 	}
+
+	_, err = uc.Execute(context.Background(), TopUpInput{UserID: "user-1", Amount: domain.MaxCredits + 1})
+	if err != ErrInvalidAmount {
+		t.Errorf("expected ErrInvalidAmount for over-max, got %v", err)
+	}
+}
+
+func TestGetAdminUsage_OveragePortionOnly(t *testing.T) {
+	events := newMockEventRepo()
+	// A charge of 5 that takes the balance from 2 to -3: only 3 is overage.
+	ev := domain.NewMeteringEvent("e1", "user-1", "a", "/x", 5, 1.0, 5, 2, -3, "hybrid", true)
+	events.events = append(events.events, ev)
+	// A fully-overage charge of 4 from -3 to -7: all 4 is overage.
+	ev2 := domain.NewMeteringEvent("e2", "user-1", "a", "/x", 4, 1.0, 4, -3, -7, "hybrid", true)
+	events.events = append(events.events, ev2)
+
+	uc := NewGetAdminUsageUseCase(events)
+	res, err := uc.Execute(context.Background(), "user-1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.TotalCost != 9 {
+		t.Errorf("total cost = %d, want 9", res.TotalCost)
+	}
+	if res.OverageCost != 7 { // 3 + 4
+		t.Errorf("overage cost = %d, want 7 (3 partial + 4 full)", res.OverageCost)
+	}
 }
 
 func TestTopUpUseCase_UserNotFound(t *testing.T) {

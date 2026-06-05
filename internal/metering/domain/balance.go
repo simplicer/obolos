@@ -10,6 +10,10 @@ type Balance struct {
 	value int64
 }
 
+// MaxCredits bounds a single credit amount (top-up or grant). It is far below
+// math.MaxInt64, so balance arithmetic cannot overflow in practice.
+const MaxCredits int64 = 1_000_000_000_000_000 // 1e15
+
 // NewBalance creates a Balance with the given value.
 func NewBalance(value int64) Balance {
 	return Balance{value: value}
