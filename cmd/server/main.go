@@ -28,7 +28,7 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	logger.Info("starting tollgate service",
+	logger.Info("starting metering service",
 		slog.String("version", Version),
 		slog.String("commit", Commit),
 		slog.String("build_time", BuildTime),
@@ -137,13 +137,13 @@ func main() {
 		}
 	}()
 
-	logger.Info("tollgate service listening", slog.String("addr", addr))
+	logger.Info("metering service listening", slog.String("addr", addr))
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	logger.Info("tollgate service stopped")
+	logger.Info("metering service stopped")
 }
 
 // startConfigRefresh periodically reloads config and pricing.

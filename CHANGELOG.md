@@ -37,4 +37,8 @@ release will be `1.0.0`.
   PostgreSQL store, pricing engine and use cases into the HTTP router with
   structured `slog` JSON logging, and runs the server with graceful shutdown.
 
+### Fixed
+- Startup/shutdown logs now identify the service as `metering` instead of
+  the copy-pasted `tollgate` name.
+
 [Unreleased]: https://codeberg.org/simplicer/metering/compare/main
