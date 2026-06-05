@@ -7,13 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
-	"sort"
 	"sync"
 	"testing"
 	"time"
 
 	"codeberg.org/simplicer/metering/internal/metering/domain"
+	"codeberg.org/simplicer/metering/migrations"
 )
 
 // These tests exercise PostgresStore against a real PostgreSQL instance.
@@ -47,20 +46,8 @@ func newTestStore(t *testing.T) (*PostgresStore, context.Context) {
 
 func applyMigration(t *testing.T, ctx context.Context, store *PostgresStore) {
 	t.Helper()
-	// package dir is internal/metering/infrastructure; repo root is three up.
-	paths, err := filepath.Glob(filepath.Join("..", "..", "..", "migrations", "*.sql"))
-	if err != nil {
-		t.Fatalf("glob migrations: %v", err)
-	}
-	sort.Strings(paths)
-	for _, path := range paths {
-		sqlBytes, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read migration %s: %v", path, err)
-		}
-		if _, err := store.pool.Exec(ctx, string(sqlBytes)); err != nil {
-			t.Fatalf("apply migration %s: %v", path, err)
-		}
+	if err := store.Migrate(ctx, migrations.Files); err != nil {
+		t.Fatalf("migrate: %v", err)
 	}
 }
 
@@ -68,6 +55,21 @@ func truncate(t *testing.T, ctx context.Context, store *PostgresStore) {
 	t.Helper()
 	if _, err := store.pool.Exec(ctx, `TRUNCATE metering_events, users CASCADE`); err != nil {
 		t.Fatalf("truncate: %v", err)
+	}
+}
+
+func TestIntegration_MigrateIsIdempotent(t *testing.T) {
+	store, ctx := newTestStore(t)
+	// newTestStore already migrated once; a second run must be a no-op.
+	if err := store.Migrate(ctx, migrations.Files); err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	var count int
+	if err := store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
+		t.Fatalf("count migrations: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected applied migrations to be tracked in schema_migrations")
 	}
 }
 

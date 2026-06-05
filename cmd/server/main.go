@@ -12,6 +12,7 @@ import (
 
 	"codeberg.org/simplicer/metering/internal/metering/application"
 	"codeberg.org/simplicer/metering/internal/metering/infrastructure"
+	"codeberg.org/simplicer/metering/migrations"
 )
 
 // Build-time variables set via ldflags.
@@ -70,6 +71,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
+
+	// Apply pending schema migrations (tracked in schema_migrations).
+	if err := store.Migrate(ctx, migrations.Files); err != nil {
+		logger.Error("migration failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	// Wire up use cases — the cost is supplied by the caller, so there is no
 	// pricing dependency. The store implements Meterer for atomic transactions.

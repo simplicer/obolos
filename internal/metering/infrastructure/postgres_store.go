@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"sort"
 	"time"
 
 	"codeberg.org/simplicer/metering/internal/metering/application"
@@ -52,6 +54,61 @@ func (s *PostgresStore) Close() {
 // Ping verifies connectivity to the database (used by the readiness probe).
 func (s *PostgresStore) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
+}
+
+// Migrate applies any pending SQL migrations from fsys (lexical order), tracking
+// applied versions in schema_migrations so it is safe to run on every startup
+// and against an already-migrated database.
+func (s *PostgresStore) Migrate(ctx context.Context, fsys fs.FS) error {
+	if _, err := s.pool.Exec(ctx,
+		`CREATE TABLE IF NOT EXISTS schema_migrations (
+			version    TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+	); err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+
+	names, err := fs.Glob(fsys, "*.sql")
+	if err != nil {
+		return fmt.Errorf("list migrations: %w", err)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		var applied bool
+		if err := s.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, name,
+		).Scan(&applied); err != nil {
+			return fmt.Errorf("check migration %s: %w", name, err)
+		}
+		if applied {
+			continue
+		}
+
+		sqlBytes, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", name, err)
+		}
+
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin migration %s: %w", name, err)
+		}
+		if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
+			tx.Rollback(ctx)
+			return fmt.Errorf("apply migration %s: %w", name, err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, name); err != nil {
+			tx.Rollback(ctx)
+			return fmt.Errorf("record migration %s: %w", name, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit migration %s: %w", name, err)
+		}
+		s.logger.Info("migration applied", slog.String("version", name))
+	}
+	return nil
 }
 
 // --- UserRepository ---

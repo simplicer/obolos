@@ -57,6 +57,6 @@ stack-up: ## Start the service stack (service + database)
 stack-down: ## Stop the service stack
 	docker compose -f infra/compose.yaml down
 
-migrate-up: ## Apply database migrations (uses DATABASE_URL)
+migrate-up: ## Manually apply migrations via psql (the server also auto-migrates on startup)
 	@test -n "$(DATABASE_URL)" || { echo "DATABASE_URL is required"; exit 1; }
-	psql "$(DATABASE_URL)" -f migrations/001_initial_schema.sql
+	@for f in migrations/*.sql; do echo ">> $$f"; psql "$(DATABASE_URL)" -f "$$f"; done
