@@ -135,6 +135,56 @@ func (s *PostgresStore) Upsert(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
+// CreateIfAbsent inserts the user only if its id is not already present.
+// An existing user (and its balance) is left untouched.
+func (s *PostgresStore) CreateIfAbsent(ctx context.Context, user *domain.User) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO users (id, plan_type, balance, overage_rate, updated_at)
+		 VALUES ($1, $2, $3, $4, NOW())
+		 ON CONFLICT (id) DO NOTHING`,
+		user.ID, user.Plan.Type, user.Balance.Value(), user.Plan.OverageRate,
+	)
+	if err != nil {
+		return fmt.Errorf("create user if absent: %w", err)
+	}
+	return nil
+}
+
+// AddCredits atomically adds amount to the user's balance and returns the new
+// balance. The single UPDATE avoids the lost-update race with concurrent charges.
+func (s *PostgresStore) AddCredits(ctx context.Context, userID string, amount int64) (int64, error) {
+	var newBalance int64
+	err := s.pool.QueryRow(ctx,
+		`UPDATE users SET balance = balance + $2, updated_at = NOW()
+		 WHERE id = $1
+		 RETURNING balance`,
+		userID, amount,
+	).Scan(&newBalance)
+	if err == pgx.ErrNoRows {
+		return 0, application.ErrUserNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("add credits: %w", err)
+	}
+	return newBalance, nil
+}
+
+// SetPlan atomically replaces the user's plan and balance.
+func (s *PostgresStore) SetPlan(ctx context.Context, userID string, plan domain.Plan, credits int64) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE users SET plan_type = $2, balance = $3, overage_rate = $4, updated_at = NOW()
+		 WHERE id = $1`,
+		userID, plan.Type, credits, plan.OverageRate,
+	)
+	if err != nil {
+		return fmt.Errorf("set plan: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return application.ErrUserNotFound
+	}
+	return nil
+}
+
 // --- EventRepository ---
 
 // Save persists a metering event.

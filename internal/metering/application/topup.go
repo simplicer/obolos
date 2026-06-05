@@ -21,27 +21,22 @@ type TopUpInput struct {
 	Amount int64
 }
 
-// Execute adds amount credits to the user's balance.
+// Execute adds amount credits to the user's balance atomically.
 func (uc *TopUpUseCase) Execute(ctx context.Context, input TopUpInput) (*TopUpResult, error) {
 	if input.Amount <= 0 {
 		return nil, ErrInvalidAmount
 	}
 
-	user, err := uc.users.FindByID(ctx, input.UserID)
+	newBalance, err := uc.users.AddCredits(ctx, input.UserID, input.Amount)
 	if err != nil {
-		return nil, fmt.Errorf("user lookup failed: %w", err)
-	}
-	if user == nil {
-		return nil, ErrUserNotFound
-	}
-
-	user.Balance = user.Balance.Credit(input.Amount)
-	if err := uc.users.Upsert(ctx, user); err != nil {
+		if err == ErrUserNotFound {
+			return nil, ErrUserNotFound
+		}
 		return nil, fmt.Errorf("balance update failed: %w", err)
 	}
 
 	return &TopUpResult{
-		UserID:  user.ID,
-		Balance: user.Balance.Value(),
+		UserID:  input.UserID,
+		Balance: newBalance,
 	}, nil
 }

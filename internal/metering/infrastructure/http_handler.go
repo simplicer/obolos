@@ -304,17 +304,11 @@ func (h *Handler) HandleVersion(w http.ResponseWriter, r *http.Request) {
 // --- Helpers ---
 
 func (h *Handler) ensureUser(ctx context.Context, userID string) error {
-	user, err := h.users.FindByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if user != nil {
-		return nil
-	}
-
 	pt, credits := h.defaultPlan()
 	newUser := domain.NewUser(userID, domain.Plan{Type: pt}, credits)
-	return h.users.Upsert(ctx, &newUser)
+	// Atomic provision: only creates the user when absent, so two concurrent
+	// first requests cannot reset an already-charged balance.
+	return h.users.CreateIfAbsent(ctx, &newUser)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

@@ -48,6 +48,40 @@ func (m *mockUserRepo) Upsert(_ context.Context, user *domain.User) error {
 	return nil
 }
 
+func (m *mockUserRepo) CreateIfAbsent(_ context.Context, user *domain.User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.users[user.ID]; ok {
+		return nil
+	}
+	u := *user
+	m.users[user.ID] = &u
+	return nil
+}
+
+func (m *mockUserRepo) AddCredits(_ context.Context, userID string, amount int64) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[userID]
+	if !ok {
+		return 0, ErrUserNotFound
+	}
+	u.Balance = u.Balance.Credit(amount)
+	return u.Balance.Value(), nil
+}
+
+func (m *mockUserRepo) SetPlan(_ context.Context, userID string, plan domain.Plan, credits int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	u.Plan = plan
+	u.Balance = domain.NewBalance(credits)
+	return nil
+}
+
 type mockEventRepo struct {
 	events []domain.MeteringEvent
 }

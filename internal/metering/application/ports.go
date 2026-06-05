@@ -8,10 +8,25 @@ import (
 )
 
 // UserRepository persists and retrieves users.
+//
+// Balance-changing operations are expressed as atomic methods (CreateIfAbsent,
+// AddCredits, SetPlan) rather than read-modify-write over Upsert, so they do
+// not lose updates when they race with a concurrent charge (which locks the
+// row inside Meterer.MeterAtomic).
 type UserRepository interface {
 	FindByID(ctx context.Context, userID string) (*domain.User, error)
 	List(ctx context.Context, limit int) ([]domain.User, error)
 	Upsert(ctx context.Context, user *domain.User) error
+
+	// CreateIfAbsent provisions a user only if it does not already exist; an
+	// existing user (and its balance) is left untouched.
+	CreateIfAbsent(ctx context.Context, user *domain.User) error
+	// AddCredits atomically adds amount to the balance and returns the new
+	// balance. Returns ErrUserNotFound if the user does not exist.
+	AddCredits(ctx context.Context, userID string, amount int64) (int64, error)
+	// SetPlan atomically replaces the user's plan and balance. Returns
+	// ErrUserNotFound if the user does not exist.
+	SetPlan(ctx context.Context, userID string, plan domain.Plan, credits int64) error
 }
 
 // EventRepository persists and retrieves metering events.

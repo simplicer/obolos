@@ -72,6 +72,14 @@ release will be `1.0.0`.
   is complete and documented under `docs/`.
 
 ### Fixed
+- Credit mutations are now atomic. Top-up, set-plan and auto-provisioning did
+  read-modify-write through a full-row `Upsert` outside any lock, so they could
+  lose updates against a concurrent charge (which locks the row) — a top-up
+  could clobber a deduction, and two concurrent first requests could reset a
+  just-charged balance. They now use single atomic statements
+  (`AddCredits` = `UPDATE ... balance = balance + $`, `SetPlan` = one `UPDATE`,
+  provisioning = `INSERT ... ON CONFLICT DO NOTHING`). Covered by a concurrent
+  top-up integration test.
 - `make migrate-up` now applies `migrations/001_initial_schema.sql` via `psql`
   against `DATABASE_URL` instead of an invalid `go run` invocation.
 - `PostgresStore` now scans `created_at` / `updated_at` (timestamptz) into

@@ -32,23 +32,16 @@ func (uc *SetPlanUseCase) Execute(ctx context.Context, input SetPlanInput) (*Set
 		return nil, ErrInvalidPlanType
 	}
 
-	user, err := uc.users.FindByID(ctx, input.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("user lookup failed: %w", err)
-	}
-	if user == nil {
-		return nil, ErrUserNotFound
-	}
-
-	user.Plan = domain.Plan{Type: pt, OverageRate: input.OverageRate}
-	user.Balance = domain.NewBalance(input.Credits)
-
-	if err := uc.users.Upsert(ctx, user); err != nil {
+	plan := domain.Plan{Type: pt, OverageRate: input.OverageRate}
+	if err := uc.users.SetPlan(ctx, input.UserID, plan, input.Credits); err != nil {
+		if err == ErrUserNotFound {
+			return nil, ErrUserNotFound
+		}
 		return nil, fmt.Errorf("plan update failed: %w", err)
 	}
 
 	return &SetPlanResult{
-		UserID:   user.ID,
+		UserID:   input.UserID,
 		PlanType: string(pt),
 		Credits:  input.Credits,
 	}, nil

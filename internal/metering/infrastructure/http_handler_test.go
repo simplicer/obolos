@@ -44,6 +44,34 @@ func (s *inMemoryStore) Upsert(_ context.Context, u *domain.User) error {
 	return nil
 }
 
+func (s *inMemoryStore) CreateIfAbsent(_ context.Context, u *domain.User) error {
+	if _, ok := s.users[u.ID]; ok {
+		return nil
+	}
+	cp := *u
+	s.users[u.ID] = &cp
+	return nil
+}
+
+func (s *inMemoryStore) AddCredits(_ context.Context, userID string, amount int64) (int64, error) {
+	u, ok := s.users[userID]
+	if !ok {
+		return 0, application.ErrUserNotFound
+	}
+	u.Balance = u.Balance.Credit(amount)
+	return u.Balance.Value(), nil
+}
+
+func (s *inMemoryStore) SetPlan(_ context.Context, userID string, plan domain.Plan, credits int64) error {
+	u, ok := s.users[userID]
+	if !ok {
+		return application.ErrUserNotFound
+	}
+	u.Plan = plan
+	u.Balance = domain.NewBalance(credits)
+	return nil
+}
+
 func (s *inMemoryStore) Save(_ context.Context, e domain.MeteringEvent) error {
 	s.events = append(s.events, e)
 	return nil

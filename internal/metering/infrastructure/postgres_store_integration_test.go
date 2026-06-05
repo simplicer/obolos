@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -165,6 +166,61 @@ func TestIntegration_EventsSaveAndAggregate(t *testing.T) {
 	}
 	if sum != 15 {
 		t.Errorf("sum = %d, want 15", sum)
+	}
+}
+
+func TestIntegration_CreateIfAbsentDoesNotReset(t *testing.T) {
+	store, ctx := newTestStore(t)
+
+	// Existing user with a non-default balance.
+	u := domain.NewUser("dave", domain.Plan{Type: domain.PlanTypePrepaid}, 500)
+	if err := store.Upsert(ctx, &u); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Provisioning again with the default credits must NOT touch the balance.
+	def := domain.NewUser("dave", domain.Plan{Type: domain.PlanTypePrepaid}, 1000)
+	if err := store.CreateIfAbsent(ctx, &def); err != nil {
+		t.Fatalf("create if absent: %v", err)
+	}
+	got, _ := store.FindByID(ctx, "dave")
+	if got.Balance.Value() != 500 {
+		t.Errorf("balance = %d, want 500 (CreateIfAbsent must not reset)", got.Balance.Value())
+	}
+}
+
+func TestIntegration_ConcurrentCreditsAreAtomic(t *testing.T) {
+	store, ctx := newTestStore(t)
+
+	u := domain.NewUser("erin", domain.Plan{Type: domain.PlanTypePrepaid}, 0)
+	if err := store.Upsert(ctx, &u); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// N concurrent +1 top-ups. With a read-modify-write top-up these would
+	// lose updates; AddCredits issues a single atomic UPDATE, so the final
+	// balance must be exactly N.
+	const n = 50
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := store.AddCredits(ctx, "erin", 1); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent add credits: %v", err)
+	}
+
+	got, _ := store.FindByID(ctx, "erin")
+	if got.Balance.Value() != n {
+		t.Errorf("balance = %d, want %d (lost updates)", got.Balance.Value(), n)
 	}
 }
 
