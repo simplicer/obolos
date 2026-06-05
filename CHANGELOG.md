@@ -22,5 +22,9 @@ release will be `1.0.0`.
   `GetBalance`, `GetUsage`, `TopUp`, `SetPlan`, `GetAdminUsage`, `ListUsers`,
   driven through `ports.go` interfaces (`UserRepository`, `EventRepository`,
   `Meterer`, `PricingConfig`) with typed application errors.
+- Pricing engine (`internal/metering/infrastructure/pricing_engine.go`):
+  resolves per-API/per-endpoint cost with time modifiers; pricing and
+  service config loaders (`pricing_loader.go`, `config_loader.go`) support
+  local JSON files, remote HTTP sources with TTL refresh, and env overrides.
 
 [Unreleased]: https://codeberg.org/simplicer/metering/compare/main
