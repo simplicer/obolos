@@ -488,9 +488,9 @@ components:
           type: string
           enum: [reset, rollover, rolling]
           description: >-
-            reset = monthly reset to amount (unused expire);
+            reset = monthly top-up to at least amount (floor, never reduces);
             rollover = monthly add amount up to cap;
-            rolling = reset to amount every 30 days.
+            rolling = top-up to at least amount every 30 days (floor).
         amount: { type: integer, format: int64, minimum: 0 }
         cap:
           type: integer

@@ -40,14 +40,15 @@ type TimeWindow struct {
 type GrantMode string
 
 const (
-	// GrantReset: at each calendar-month boundary (UTC) the balance is reset to
-	// Amount; unused credits expire.
+	// GrantReset: at each calendar-month boundary (UTC) the balance is topped up
+	// to at least Amount (a monthly floor). It never reduces a higher balance,
+	// so purchased credits are preserved.
 	GrantReset GrantMode = "reset"
 	// GrantRollover: at each calendar-month boundary Amount is added to the
 	// balance, capped at Cap (0 = uncapped); unused credits roll over.
 	GrantRollover GrantMode = "rollover"
-	// GrantRolling: every 30 days from the last grant the balance is reset to
-	// Amount.
+	// GrantRolling: every 30 days from the last grant the balance is topped up
+	// to at least Amount (a rolling floor); it never reduces a higher balance.
 	GrantRolling GrantMode = "rolling"
 )
 
@@ -89,8 +90,11 @@ func (g Grant) Applied(balance int64, t time.Time) (newBalance int64, newAnchor 
 		if g.Cap > 0 && newBalance > g.Cap {
 			newBalance = g.Cap
 		}
-	default: // reset, rolling
-		newBalance = g.Amount
+	default: // reset, rolling: top up to the Amount floor, never reduce
+		newBalance = balance
+		if g.Amount > newBalance {
+			newBalance = g.Amount
+		}
 	}
 	if g.Mode == GrantRolling {
 		return newBalance, t.UTC().Format(time.RFC3339)

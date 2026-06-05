@@ -136,6 +136,22 @@ func TestEntitlements_NegativeFactorClampedToZero(t *testing.T) {
 	}
 }
 
+func TestGrant_FloorNeverReducesBalance(t *testing.T) {
+	// A reset grant of 1000 must NOT wipe a balance of 5000 (purchased credits).
+	reset := Grant{Mode: GrantReset, Amount: 1000, Anchor: "2026-05"}
+	if nb, _ := reset.Applied(5000, fri10); nb != 5000 {
+		t.Errorf("reset floor: got %d, want 5000 (must not reduce)", nb)
+	}
+	// But it tops a low balance up to the floor.
+	if nb, _ := reset.Applied(200, fri10); nb != 1000 {
+		t.Errorf("reset floor: got %d, want 1000", nb)
+	}
+	rolling := Grant{Mode: GrantRolling, Amount: 500}
+	if nb, _ := rolling.Applied(5000, fri10); nb != 5000 {
+		t.Errorf("rolling floor: got %d, want 5000 (must not reduce)", nb)
+	}
+}
+
 func TestGrant_NoneNeverDue(t *testing.T) {
 	if (Grant{}).IsDue(fri10) {
 		t.Error("empty grant must never be due")

@@ -88,6 +88,10 @@ release will be `1.0.0`.
   is complete and documented under `docs/`.
 
 ### Fixed
+- Periodic grants never reduce a balance: `reset` and `rolling` now apply a
+  **floor** (`balance = max(balance, amount)`) instead of overwriting, so a
+  monthly grant can no longer wipe purchased (topped-up) credits (ADR 0009).
+  `rollover` is unchanged (additive with cap).
 - Entitlement rules are now validated on `PUT /v1/users/{id}/plan` (window
   action/hours/days, non-negative multiply factor, grant mode/amount/cap,
   non-negative rate limit) → `400 invalid_entitlements`, and a charge cost is

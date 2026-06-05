@@ -76,11 +76,13 @@ client's quota, not on price (ADR 0008).
 
 A user may carry a periodic grant (`entitlements.grant`):
 
-- `reset` — at each calendar-month boundary (UTC) the balance is reset to
-  `amount`; unused credits expire.
+- `reset` — at each calendar-month boundary (UTC) the balance is topped up to
+  at least `amount` (a monthly floor); it never reduces a higher balance, so
+  purchased credits are preserved (ADR 0009).
 - `rollover` — at each month boundary `amount` is added, capped at `cap`
   (0 = uncapped); unused credits roll over.
-- `rolling` — the balance is reset to `amount` every 30 days from the last grant.
+- `rolling` — the balance is topped up to at least `amount` every 30 days from
+  the last grant (a rolling floor; never reduces).
 
 Grants are applied **lazily** on the next charge or balance read (no scheduler)
 and, via a row-locked check on the period anchor, **at most once per period**
