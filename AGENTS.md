@@ -1,0 +1,166 @@
+# AGENTS.md
+
+Architecture rules for the Metering service. Agents and developers MUST follow these rules.
+
+## Architecture
+
+- **DDD**: Domain-Driven Design with vertical slicing and Screaming Architecture.
+- **Bounded Context**: `metering` — the sole context in this project.
+- **Slice Location**: `internal/metering/`
+
+## Layer Separation
+
+### Domain (`internal/metering/domain/`)
+- Pure business logic only.
+- No framework dependencies.
+- No infrastructure imports.
+- Contains: Balance, Plan, PricingRule, MeteringEvent, UsageRecord value objects and entities.
+- Tests: colocated `*_test.go` files.
+
+### Application (`internal/metering/application/`)
+- Use cases only. One use case = one file.
+- No persistence logic.
+- No framework logic.
+- No HTTP adapters.
+- Contains: Meter, GetBalance, GetUsage, AdminTopUp, AdminCreatePlan use cases and their ports.
+- Tests: colocated `*_test.go` files.
+
+### Infrastructure (`internal/metering/infrastructure/`)
+- HTTP handlers, routers, middleware.
+- PostgreSQL store adapter.
+- Configuration loader (local JSON + remote HTTP).
+- Adapters that implement application ports.
+- Tests: colocated `*_test.go` files.
+
+## Dependency Direction
+
+```
+Infrastructure → Application → Domain
+```
+
+**NEVER** import infrastructure from domain or application.
+
+## Naming Conventions
+
+- Directories: `kebab-case`
+- Files: `snake_case.go` (Go convention)
+- Types/Interfaces: `PascalCase`
+- Tests: `*_test.go` alongside source
+
+## Testing Philosophy
+
+- **Unit**: Every use case tested in isolation with mocked ports.
+- **Integration**: PostgreSQL store tested with real DB (testcontainers or Docker).
+- **Acceptance**: Full metering flow tested end-to-end via HTTP.
+- **E2E**: Full server behavior tested via HTTP requests.
+
+Tests colocated with source (Go convention). No separate `tests/` directory.
+
+## Logging
+
+- Structured JSON logging via `log/slog`.
+- Loki-compatible format.
+- Every metering event MUST log: `owner_id`, `api`, `endpoint`, `cost`, `balance_after`.
+- Logs stored under `var/log/`.
+
+## Configuration
+
+- Configuration files under `etc/`.
+- Primary format: JSON (strict schema, typed, validated).
+- `etc/pricing.json` — pricing rules per API/endpoint.
+- `etc/config.json` — service configuration (port, log level, DB connection).
+- **Config sources** (priority order):
+  1. Remote HTTP endpoint (dynamic, hot-reloadable)
+  2. Local JSON file (fallback, reloadable on SIGHUP)
+  3. Environment variables (overrides)
+- Config MUST be reloadable without restart.
+- Pricing config changes take effect on next request (no caching of pricing rules beyond TTL).
+
+## Versioning
+
+- Semantic Versioning: `X.Y.Z`
+- Version stored in `VERSION` file.
+- Conventional Commits for all changes.
+
+## External Dependencies
+
+- **Allowed** (pragmatic minimum):
+  - `jackc/pgx/v5` — PostgreSQL driver
+  - `golang.org/x/crypto/acme/autocert` — Let's Encrypt (if needed)
+- **Forbidden**:
+  - HTTP frameworks (use `net/http` stdlib)
+  - ORMs
+  - Config frameworks (use `encoding/json` stdlib)
+- Go stdlib for: HTTP server, JSON, logging, testing.
+
+## License
+
+- GNU AGPL v3 — same as vatguard.
+
+## Identity
+
+- This service does NOT manage identity.
+- It receives `X-User-Id` headers from the reverse proxy (which validated the token against the IdP).
+- It trusts the proxy's authentication — no token introspection here.
+- The only concern is: "user X called endpoint Y, what does it cost?"
+
+## Billing Models
+
+The domain MUST support three plan types:
+
+1. **Prepaid**: Fixed credit balance. Requests are blocked (HTTP 402) when balance reaches 0.
+2. **Unlimited**: No credit deduction. Requests always pass. Usage is logged for analytics only.
+3. **Hybrid (Prepaid + Overage)**: Prepaid credits until exhausted, then switches to postpaid billing at a per-unit overage rate. Requests are never blocked — balance can go negative.
+
+Every user has exactly one active plan. Plans define:
+- Plan type (prepaid, unlimited, hybrid)
+- Included credits (for prepaid/hybrid)
+- Overage rate (for hybrid — cost per unit after exhaustion)
+- Rate limits (requests per minute)
+- Time-based pricing modifiers (peak/off-peak multipliers)
+
+## Pricing Rules
+
+Pricing is defined per API and per endpoint in `pricing.json`:
+
+```json
+{
+  "apis": {
+    "vatguard": {
+      "endpoints": {
+        "/v1/vat/{number}": { "base_cost": 1 },
+        "/v1/vies/{number}": { "base_cost": 5 },
+        "/health": { "base_cost": 0 },
+        "/version": { "base_cost": 0 }
+      }
+    },
+    "api-2": {
+      "endpoints": {
+        "/v1/resource": {
+          "base_cost": 3,
+          "time_modifiers": [
+            {
+              "hours": "09:00-17:00",
+              "days": ["mon", "tue", "wed", "thu", "fri"],
+              "multiplier": 1.5
+            }
+          ]
+        },
+        "/v1/heavy": { "base_cost": 10 }
+      }
+    }
+  },
+  "default_cost": 1
+}
+```
+
+## API Surface
+
+- `POST /v1/meter` — Meter a request (called by reverse proxy as forwardAuth)
+- `GET /v1/balance` — Get current balance for authenticated user
+- `GET /v1/usage` — Get usage history for authenticated user
+- `GET /health` — Health check
+- `GET /version` — Version info
+- `POST /v1/admin/users/{user_id}/topup` — Add credits to a user (admin)
+- `GET /v1/admin/users/{user_id}/usage` — Get usage for a user (admin)
+- `POST /v1/admin/users/{user_id}/plan` — Set plan for a user (admin)

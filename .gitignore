@@ -1,0 +1,19 @@
+# Build artifacts
+/bin/
+coverage.out
+coverage.html
+
+# Runtime configuration (only *.example.json is tracked)
+/etc/config.json
+/etc/pricing.json
+
+# Runtime logs (directory tracked via .gitkeep)
+/var/log/*.log
+/var/log/**/*.log
+
+# Knowledge graph output
+/graphify-out/
+
+# OS / editor
+.DS_Store
+*.swp
