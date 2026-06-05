@@ -48,6 +48,11 @@ release will be `1.0.0`.
   structured `slog` JSON logging, and runs the server with graceful shutdown.
 
 ### Fixed
+- `PostgresStore` now scans `created_at` / `updated_at` (timestamptz) into
+  `time.Time` instead of `string` in `FindByID`, `List` and `MeterAtomic`.
+  The previous code failed at runtime against a real database
+  (`cannot scan timestamptz ... into *string`); revealed by the new
+  integration suite.
 - Startup/shutdown logs now identify the service as `metering` instead of
   the copy-pasted `tollgate` name.
 - `MeteringEvent` now serializes with `snake_case` JSON keys

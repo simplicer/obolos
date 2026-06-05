@@ -69,7 +69,8 @@ func (s *PostgresStore) List(ctx context.Context, limit int) ([]domain.User, err
 		var u domain.User
 		var planType string
 		var overageRate float64
-		err := rows.Scan(&u.ID, &planType, &u.Balance, &overageRate, &u.CreatedAt, &u.UpdatedAt)
+		var createdAt, updatedAt time.Time
+		err := rows.Scan(&u.ID, &planType, &u.Balance, &overageRate, &createdAt, &updatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
@@ -78,6 +79,8 @@ func (s *PostgresStore) List(ctx context.Context, limit int) ([]domain.User, err
 			return nil, fmt.Errorf("invalid plan type: %w", err)
 		}
 		u.Plan = domain.Plan{Type: pt, OverageRate: overageRate}
+		u.CreatedAt = createdAt.Format(time.RFC3339)
+		u.UpdatedAt = updatedAt.Format(time.RFC3339)
 		users = append(users, u)
 	}
 
@@ -89,11 +92,12 @@ func (s *PostgresStore) FindByID(ctx context.Context, userID string) (*domain.Us
 	var u domain.User
 	var planType string
 	var overageRate float64
+	var createdAt, updatedAt time.Time
 
 	err := s.pool.QueryRow(ctx,
 		`SELECT id, plan_type, balance, overage_rate, created_at, updated_at FROM users WHERE id = $1`,
 		userID,
-	).Scan(&u.ID, &planType, &u.Balance, &overageRate, &u.CreatedAt, &u.UpdatedAt)
+	).Scan(&u.ID, &planType, &u.Balance, &overageRate, &createdAt, &updatedAt)
 
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -107,6 +111,8 @@ func (s *PostgresStore) FindByID(ctx context.Context, userID string) (*domain.Us
 		return nil, fmt.Errorf("invalid plan type in DB: %w", err)
 	}
 	u.Plan = domain.Plan{Type: pt, OverageRate: overageRate}
+	u.CreatedAt = createdAt.Format(time.RFC3339)
+	u.UpdatedAt = updatedAt.Format(time.RFC3339)
 
 	return &u, nil
 }
@@ -218,7 +224,7 @@ func (s *PostgresStore) MeterAtomic(ctx context.Context, userID, api, endpoint s
 	var planType string
 	var overageRate float64
 	var balanceBefore int64
-	var createdAt, updatedAt string
+	var createdAt, updatedAt time.Time
 
 	err = tx.QueryRow(ctx,
 		`SELECT plan_type, balance, overage_rate, created_at, updated_at FROM users WHERE id = $1 FOR UPDATE`,
