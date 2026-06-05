@@ -1,4 +1,4 @@
-.PHONY: build run test test-integration clean fmt lint help docker-build docker-up docker-down
+.PHONY: build run test test-integration test-short test-cover clean fmt lint help docker-build docker-up docker-down migrate-up
 
 # Project
 MODULE     := codeberg.org/simplicer/metering
@@ -53,6 +53,6 @@ docker-up: ## Start Docker container
 docker-down: ## Stop Docker container
 	cd infra && docker compose down
 
-migrate-up: ## Run database migrations
-	$(GO) run github.com/jackc/pgx/v5/pgxpool@latest || true
-	@echo "Run migrations manually: psql -f migrations/001_initial_schema.sql"
+migrate-up: ## Apply database migrations (uses DATABASE_URL)
+	@test -n "$(DATABASE_URL)" || { echo "DATABASE_URL is required"; exit 1; }
+	psql "$(DATABASE_URL)" -f migrations/001_initial_schema.sql

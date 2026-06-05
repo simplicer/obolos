@@ -54,7 +54,13 @@ release will be `1.0.0`.
   PostgreSQL store, pricing engine and use cases into the HTTP router with
   structured `slog` JSON logging, and runs the server with graceful shutdown.
 
+### Removed
+- `PROMPT.md` (the temporary development guide), now that the implementation
+  is complete and documented under `docs/`.
+
 ### Fixed
+- `make migrate-up` now applies `migrations/001_initial_schema.sql` via `psql`
+  against `DATABASE_URL` instead of an invalid `go run` invocation.
 - `PostgresStore` now scans `created_at` / `updated_at` (timestamptz) into
   `time.Time` instead of `string` in `FindByID`, `List` and `MeterAtomic`.
   The previous code failed at runtime against a real database
