@@ -22,6 +22,10 @@ release will be `1.0.0`.
   RPC-style draft (`/v1/meter`, `/v1/admin/.../topup`).
 
 ### Added
+- Acceptance / end-to-end test suite driving the full HTTP stack over a
+  loopback server with a real client: full metering journey, authorization
+  boundaries (owner / admin / forbidden / unauthorized) and prepaid
+  exhaustion returning `402 insufficient_credits`.
 - Integration test suite for `PostgresStore` (build tag `integration`),
   runnable against a disposable Postgres container via `make test-integration`
   (`bin/run-integration-tests`).
